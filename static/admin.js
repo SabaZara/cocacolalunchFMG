@@ -44,6 +44,7 @@
     ghRepo: document.getElementById("ghRepo"),
     ghToken: document.getElementById("ghToken"),
     ghSaveBtn: document.getElementById("ghSaveBtn"),
+    ghTestBtn: document.getElementById("ghTestBtn"),
     ghState: document.getElementById("ghState"),
     statTotal: document.getElementById("statTotal"),
     statAte: document.getElementById("statAte"),
@@ -446,6 +447,43 @@
         } else {
           notice(els.backupMsg, (res.j && res.j.detail) || "ვერ შეინახა.", "bad");
         }
+      });
+    });
+  }
+
+  // Upload to GitHub RIGHT NOW. Without this the only way to find out whether
+  // the token actually works is to wait for the weekly job and check the repo,
+  // and a failure there is silent. This reports GitHub's exact answer.
+  if (els.ghTestBtn) {
+    els.ghTestBtn.addEventListener("click", function () {
+      els.ghTestBtn.disabled = true;
+      notice(els.backupMsg, "მიმდინარეობს ატვირთვა GitHub-ზე…", "warn");
+      api("POST", "/api/backup/github-upload").then(function (res) {
+        var j = res.j || {};
+        if (res.ok && j.ok) {
+          var kb = j.size ? " (" + Math.round(j.size / 1024) + " KB)" : "";
+          notice(els.backupMsg,
+            "✓ ატვირთულია GitHub-ზე: <b>" + esc(j.name || "") + "</b>" + kb +
+            "<br>ბექაფი მუშაობს — შეამოწმეთ რეპოში საქაღალდე <b>backups/</b>.", "ok");
+        } else {
+          var err = j.error || (j.detail || "უცნობი შეცდომა");
+          var hint = "";
+          if (/401/.test(err)) {
+            hint = "ტოკენი არასწორია ან არასრულად ჩაისვა — შექმენით ახალი და ჩასვით მთლიანად.";
+          } else if (/404/.test(err)) {
+            hint = "ტოკენს არ აქვს ამ პრივატულ რეპოზე წვდომა (საჭიროა <b>repo</b> უფლება), ან რეპოს სახელი არასწორია.";
+          } else if (/403/.test(err)) {
+            hint = "ტოკენს არ აქვს ჩაწერის უფლება — საჭიროა <b>repo</b> (ან Contents: Read and write).";
+          }
+          notice(els.backupMsg,
+            "✗ ატვირთვა ვერ მოხერხდა: <b>" + esc(err) + "</b>" +
+            (hint ? "<br>" + hint : ""), "bad");
+        }
+        loadBackupStatus();
+        els.ghTestBtn.disabled = false;
+      }).catch(function () {
+        notice(els.backupMsg, "ატვირთვა ვერ მოხერხდა (კავშირის შეცდომა).", "bad");
+        els.ghTestBtn.disabled = false;
       });
     });
   }

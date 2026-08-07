@@ -121,11 +121,16 @@
         <input id="ghRepo" type="text" placeholder="owner/repo (პრივატული)" style="min-width:250px" />
         <input id="ghToken" type="password" placeholder="GitHub ტოკენი" style="min-width:220px" />
         <button id="ghSaveBtn" class="ghost">შენახვა</button>
+        <button id="ghTestBtn">ბექაფი ახლავე (ტესტი)</button>
       </div>
       <div class="hint" style="margin-top:8px">
         ბექაფი კეთდება ავტომატურად კვირაში ერთხელ: ლოკალურად (backups/) და
-        GitHub-ზე (ინახება ბოლო 4 ვერსია). დააყენეთ ერთხელ: შექმენით fine-grained
-        ტოკენი მხოლოდ ამ პრივატულ რეპოზე (Contents: Read and write) და ჩაწერეთ აქ.
+        GitHub-ზე (ინახება ბოლო 4 ვერსია). დააყენეთ ერთხელ: შექმენით ტოკენი
+        <b>repo</b> უფლებით (ან fine-grained ტოკენი ამ პრივატულ რეპოზე —
+        Contents: Read and write) და ჩაწერეთ აქ.
+        <br>
+        <b>„ბექაფი ახლავე"</b> მაშინვე ატვირთავს ბაზას GitHub-ზე და გეტყვით
+        შედეგს — ასე შეამოწმებთ, მუშაობს თუ არა ტოკენი.
       </div>
       <div id="backupMsg"></div>
     </details>
