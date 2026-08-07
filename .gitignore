@@ -1,0 +1,57 @@
+# --- secrets & data: NEVER commit ---
+.env
+*.db
+*.db-wal
+*.db-shm
+*.sqlite
+*.sqlite3
+backups/
+.backup-config.json
+.app-config.json
+
+# real card lists / imports (never commit real card IDs)
+cards*.xlsx
+cards*.csv
+*_cards.xlsx
+*_cards.csv
+tests/data/real_cards.xlsx
+tests/data/*.real.*
+
+# downloaded binaries
+cloudflared.exe
+ngrok.exe
+ngrok.zip
+tunnel-url.txt
+lunch-pids.txt
+*.log
+*.zip
+
+# diagnostics / runtime
+diagnose.txt
+start-log.txt
+diag-app.log
+diag-pids.txt
+
+# self-update working dirs (rollback snapshot + download temp)
+.rollback/
+.update-tmp/
+
+# standalone tester build artifacts
+kiosk-tester/.build-venv/
+kiosk-tester/build/
+kiosk-tester/dist/
+kiosk-tester/*.spec
+
+# python
+.venv/
+venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# os / editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+preview-pids.txt

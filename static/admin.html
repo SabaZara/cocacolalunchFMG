@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="ka">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>ბარათების მართვა — სასადილო</title>
+  <script src="/static/ngrok-skip.js"></script>
+  <link rel="stylesheet" href="/static/app.css" />
+</head>
+<body>
+  <header class="topbar">
+    <h1>სასადილო</h1>
+    <nav>
+      <a href="/admin" class="active">ბარათები</a>
+      <a href="/reports">რეპორტები</a>
+    </nav>
+    <span class="spacer"></span>
+    <span class="ver-badge" id="verBadge" title="აპლიკაციის ვერსია"></span>
+    <span class="user" id="userLabel"></span>
+    <button class="ghost small" id="logoutBtn">გასვლა</button>
+  </header>
+
+  <div class="container">
+    <div id="globalMsg"></div>
+
+    <!-- Stats overview -->
+    <div class="stat-grid" style="margin-bottom:18px">
+      <div class="stat accent-primary"><div class="n" id="statTotal">–</div><div class="l">სულ ბარათი</div></div>
+      <div class="stat accent-ok"><div class="n" id="statAte">–</div><div class="l">დღეს ნაჭამი</div></div>
+      <div class="stat"><div class="n" id="statActive">–</div><div class="l">აქტიური</div></div>
+      <div class="stat accent-warn"><div class="n" id="statRemaining">–</div><div class="l">დარჩენილი</div></div>
+    </div>
+
+    <!-- Add / capture a card -->
+    <div class="card">
+      <h2><span class="h2-ico">➕</span> ბარათის დამატება</h2>
+      <div class="row">
+        <input id="newCard" type="text" placeholder="ბარათის ID" />
+        <button id="addBtn">დამატება</button>
+        <button id="captureBtn" class="ghost" title="დააფოკუსეთ და დაადეთ ბარათი">ბარათის წაკითხვა</button>
+        <span id="captureHint" class="hidden" style="color:var(--muted)">დაელოდეთ ბარათის დადებას…</span>
+      </div>
+      <div id="addMsg"></div>
+    </div>
+
+    <!-- Bulk import -->
+    <div class="card">
+      <h2><span class="h2-ico">📥</span> ჯგუფური იმპორტი (.xlsx / .csv)</h2>
+      <div class="row">
+        <input id="importFile" type="file" accept=".xlsx,.csv" />
+        <button id="importBtn">ატვირთვა</button>
+      </div>
+      <div class="hint" style="margin-top:8px">ერთ სვეტში, ერთი ბარათის ID თითო ხაზზე. წამყვანი ნულები შენარჩუნდება.</div>
+      <div id="importMsg"></div>
+    </div>
+
+    <!-- Card list -->
+    <div class="card">
+      <h2><span class="h2-ico">🪪</span> ბარათები</h2>
+
+      <div class="row" style="margin-bottom:10px">
+        <input id="search" type="text" placeholder="ძებნა ბარათის ID-ით…" style="min-width:220px" />
+        <button id="searchBtn" class="ghost">ძებნა</button>
+        <button id="clearSearchBtn" class="ghost">გასუფთავება</button>
+        <span class="spacer" style="flex:1"></span>
+        <button id="exportCsvBtn" class="ghost small">CSV ექსპორტი</button>
+      </div>
+
+      <!-- filter chips -->
+      <div class="chips" id="filterChips" style="margin-bottom:12px">
+        <button class="chip active" data-filter="all">ყველა</button>
+        <button class="chip" data-filter="active">აქტიური</button>
+        <button class="chip" data-filter="inactive">გათიშული</button>
+        <button class="chip" data-filter="ate">ნაჭამი</button>
+        <button class="chip" data-filter="notate">არ უჭამია</button>
+        <span class="spacer" style="flex:1"></span>
+        <span id="countLabel" style="color:var(--muted)"></span>
+      </div>
+
+      <!-- bulk action toolbar (shown when rows are selected) -->
+      <div class="bulkbar hidden" id="bulkBar">
+        <span id="bulkCount" class="bulk-count">0 მონიშნული</span>
+        <span class="spacer" style="flex:1"></span>
+        <button class="small ghost" data-bulk="setlimit">ლიმიტის დაყენება</button>
+        <button class="small ghost" data-bulk="ate">მონიშვნა: ჭამა</button>
+        <button class="small ghost" data-bulk="unate">ჭამის მოხსნა</button>
+        <button class="small ghost" data-bulk="activate">ჩართვა</button>
+        <button class="small ghost" data-bulk="deactivate">გათიშვა</button>
+        <button class="small danger" data-bulk="delete">მონიშნულის წაშლა</button>
+      </div>
+
+      <div class="table-wrap">
+        <table>
+          <thead id="tableHead"></thead>
+          <tbody id="tableBody"></tbody>
+        </table>
+      </div>
+
+      <div class="row" style="margin-top:14px">
+        <span class="spacer" style="flex:1"></span>
+        <button id="deleteAllBtn" class="small danger" title="ყველა ბარათის წაშლა">ყველას წაშლა</button>
+      </div>
+    </div>
+
+    <!-- Backups run automatically (weekly local + GitHub). The only manual
+         step is arming GitHub once with a repo + token (collapsed by default). -->
+    <details class="card" id="backupSetup">
+      <summary style="cursor:pointer;font-weight:700">
+        <span class="h2-ico">💾</span> ბექაფის პარამეტრები
+        <span id="ghState" class="hint" style="font-weight:400;margin-inline-start:10px"></span>
+      </summary>
+      <div class="row" style="margin-top:12px">
+        <input id="ghRepo" type="text" placeholder="owner/repo (პრივატული)" style="min-width:250px" />
+        <input id="ghToken" type="password" placeholder="GitHub ტოკენი" style="min-width:220px" />
+        <button id="ghSaveBtn" class="ghost">შენახვა</button>
+      </div>
+      <div class="hint" style="margin-top:8px">
+        ბექაფი კეთდება ავტომატურად კვირაში ერთხელ: ლოკალურად (backups/) და
+        GitHub-ზე (ინახება ბოლო 4 ვერსია). დააყენეთ ერთხელ: შექმენით fine-grained
+        ტოკენი მხოლოდ ამ პრივატულ რეპოზე (Contents: Read and write) და ჩაწერეთ აქ.
+      </div>
+      <div id="backupMsg"></div>
+    </details>
+
+    <!-- System / remote update -->
+    <div class="card">
+      <h2><span class="h2-ico">🔄</span> სისტემა</h2>
+      <div class="row">
+        <button id="updateBtn">განახლება GitHub-იდან</button>
+        <span class="spacer" style="flex:1"></span>
+        <span id="updateVer" style="color:var(--muted)"></span>
+      </div>
+      <div class="hint" style="margin-top:8px">ჩამოტვირთავს უახლეს კოდს და გადატვირთავს აპს. მონაცემები (ბარათები, .env) უცვლელი რჩება. დასრულების შემდეგ განაახლეთ გვერდი (Ctrl+F5).</div>
+      <div id="updateMsg"></div>
+    </div>
+  </div>
+
+  <script src="/static/admin.js"></script>
+</body>
+</html>

@@ -1,0 +1,120 @@
+LUNCH  --  manual install on the kiosk  (version 1.3.1)
+=======================================================
+
+Use this when you are AT the kiosk and want to install by hand instead of
+using the "Update from GitHub" button.
+
+READ THIS FIRST
+---------------
+Your cards and eating history are in the database. SQLite keeps recent
+changes in a side file (lunch.db-wal), so copying lunch.db ON ITS OWN CAN
+LOSE DATA. Step 2 below makes ONE safe file that contains everything.
+Do not skip it.
+
+This zip does NOT contain your database or your .env, so nothing of yours is
+overwritten.
+
+
+STEP 1 - stop the old version
+-----------------------------
+In the OLD folder, double-click:   stop.bat
+(If it says there is nothing to stop, that is fine.)
+
+
+STEP 2 - export the database   <-- DO NOT SKIP
+----------------------------------------------
+In the OLD folder, double-click:   export-db.bat
+
+It creates a single file:   lunch-export.db
+and prints how many cards and scans it contains, for example:
+
+    [export]   cards : 520
+    [export]   scans : 1387
+    [export] OK - this single file contains everything.
+
+CHECK THE CARD NUMBER LOOKS RIGHT before continuing.
+
+  * If export-db.bat is missing from the old folder (older version), then
+    instead copy ALL FOUR of these files in step 4:
+        lunch.db   lunch.db-wal   lunch.db-shm   .env
+    Copying all four is safe. Copying lunch.db alone is NOT.
+
+
+STEP 3 - unzip the new version
+------------------------------
+Unzip this package somewhere simple, for example:
+
+    C:\lunch\lunchFMG-kiosk-ready
+
+Keep the OLD folder. Do not delete anything yet.
+
+
+STEP 4 - copy your data into the new folder
+-------------------------------------------
+Copy from the OLD folder into the NEW folder:
+
+    lunch-export.db     -> then RENAME it to      lunch.db
+    .env                -> keep the name as is     (password, ngrok, secrets)
+
+If you also have these in the old folder, copy them too (optional):
+
+    .backup-config.json    GitHub backup settings, if you set it up
+    .app-config.json       meal split time, if you changed it
+    ngrok.exe              saves a download (the zip already includes one)
+
+Copy - do not move - until the new version is confirmed working.
+
+
+STEP 5 - first run
+------------------
+In the NEW folder, double-click:   start.bat
+
+The first run creates the environment and installs dependencies (needs
+internet, 1-2 minutes), then starts everything and opens the kiosk screen.
+
+Check it worked:
+  * the scan screen shows the Georgian "place your card" message
+  * tap or type a known card + Enter  ->  green screen
+  * the card list in admin shows your usual number of cards
+
+
+STEP 6 - put quick-start on the Desktop
+---------------------------------------
+In the NEW folder, right-click  quick-start.bat  ->  Send to  ->
+Desktop (create shortcut).
+
+After any reboot, double-click that Desktop shortcut. It starts everything,
+opens the kiosk screen and closes itself. It also pulls the latest code from
+GitHub automatically when the kiosk is online.
+
+
+STEP 7 - check the version
+--------------------------
+Open the admin page from your own laptop or phone (the ngrok address). The
+badge at the top right should read:   v1.3.1
+
+
+STEP 8 - later
+--------------
+Once you are sure everything works (give it a day), the OLD folder can be
+deleted.
+
+
+IF SOMETHING GOES WRONG
+-----------------------
+The old folder is untouched, so you can always go back:
+    1. in the NEW folder run  stop.bat
+    2. in the OLD folder run  start.bat
+
+For diagnostics, run  diagnose.bat  in the new folder and send diagnose.txt.
+
+
+WHAT IS NEW IN 1.3.1
+--------------------
+  * quantitative report: first meal / second meal / total, per day
+  * meal split time is editable from the reports page
+  * kiosk clock correction (-14 minutes) applied to report times
+  * confirmation popups in Georgian before edit and delete
+  * automatic weekly backups: local folder + private GitHub repo
+  * the browser can no longer cache the kiosk screen (fixes the garbled page)
+  * updates can be applied remotely from the admin page

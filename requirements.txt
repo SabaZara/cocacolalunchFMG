@@ -1,0 +1,17 @@
+fastapi==0.115.6
+uvicorn[standard]==0.34.0
+sqlmodel==0.0.22
+passlib[bcrypt]==1.7.4
+# passlib 1.7.4 reads bcrypt.__about__.__version__, removed in bcrypt 4.1+.
+# Pin to 4.0.1 to silence the "error reading bcrypt version" trap (cosmetic,
+# but keep the log clean on the kiosk). Hashing/verify work either way.
+bcrypt==4.0.1
+openpyxl==3.1.5
+python-dotenv==1.0.1
+itsdangerous==2.2.0
+python-multipart==0.0.20
+tzdata==2024.2
+
+# --- dev / tests only (installed by start.bat too; harmless on the kiosk) ---
+pytest==8.3.4
+httpx==0.28.1

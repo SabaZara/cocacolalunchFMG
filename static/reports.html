@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="ka">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>რეპორტები — სასადილო</title>
+  <script src="/static/ngrok-skip.js"></script>
+  <link rel="stylesheet" href="/static/app.css" />
+</head>
+<body>
+  <header class="topbar">
+    <h1>სასადილო</h1>
+    <nav>
+      <a href="/admin">ბარათები</a>
+      <a href="/reports" class="active">რეპორტები</a>
+    </nav>
+    <span class="spacer"></span>
+    <span class="user" id="userLabel"></span>
+    <button class="ghost small" id="logoutBtn">გასვლა</button>
+  </header>
+
+  <div class="container">
+    <!-- Today -->
+    <div class="card">
+      <h2><span class="h2-ico">📊</span> დღეს</h2>
+      <div class="stat-grid">
+        <div class="stat accent-ok"><div class="n" id="statAte">–</div><div class="l">ნაჭამი (კაცი)</div></div>
+        <div class="stat accent-primary"><div class="n" id="statMeals">–</div><div class="l">სულ კვება</div></div>
+        <div class="stat"><div class="n" id="statActive">–</div><div class="l">აქტიური ბარათები</div></div>
+        <div class="stat accent-warn"><div class="n" id="statRemaining">–</div><div class="l">ჯერ არ უჭამია</div></div>
+      </div>
+      <small id="todayDate" style="color:var(--muted)"></small>
+    </div>
+
+    <!-- Range + quick buttons -->
+    <div class="card">
+      <h2>პერიოდი</h2>
+      <div class="row" style="margin-bottom:10px">
+        <button class="ghost small" data-range="today">დღეს</button>
+        <button class="ghost small" data-range="week">ეს კვირა</button>
+        <button class="ghost small" data-range="month">ეს თვე</button>
+      </div>
+      <div class="row">
+        <label class="ltr">დან <input id="fromDate" type="date" /></label>
+        <label class="ltr">მდე <input id="toDate" type="date" /></label>
+        <button id="applyBtn">ჩვენება</button>
+      </div>
+      <div class="row" style="margin-top:12px">
+        <span style="color:var(--muted)">ჩამოტვირთვა:</span>
+        <button class="ghost small" id="attXlsx">დასწრება .xlsx</button>
+        <button class="ghost small" id="attCsv">დასწრება .csv</button>
+        <button class="ghost small" id="detXlsx">დეტალები .xlsx</button>
+        <button class="ghost small" id="detCsv">დეტალები .csv</button>
+      </div>
+      <div id="rangeMsg"></div>
+    </div>
+
+    <!-- Daily counts -->
+    <div class="card">
+      <h2>დღიური რაოდენობა</h2>
+      <table>
+        <thead><tr><th class="ltr">თარიღი</th><th>ნაჭამი</th></tr></thead>
+        <tbody id="dailyBody"></tbody>
+      </table>
+    </div>
+
+    <!-- Quantitative (marketing) report -->
+    <div class="card">
+      <h2><span class="h2-ico">📈</span> რაოდენობრივი რეპორტი
+        <span class="spacer" style="flex:1"></span>
+        <button class="ghost small" id="quantXlsx">ჩამოტვირთვა .xlsx</button>
+        <button class="ghost small" id="quantCsv">ჩამოტვირთვა .csv</button>
+      </h2>
+      <div class="row" style="margin-bottom:10px">
+        <span style="color:var(--muted)">გაყოფის დრო:</span>
+        <input id="mealSplit" type="time" class="ltr" style="width:130px" />
+        <button id="mealSplitSave" class="ghost small">შენახვა</button>
+        <span id="mealSplitMsg" class="hint"></span>
+      </div>
+      <div class="row" style="margin-bottom:10px">
+        <span id="quantPeriod" style="color:var(--muted)"></span>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th class="ltr">თარიღი</th>
+              <th id="quantH1">პირველი კვება</th>
+              <th id="quantH2">მეორე კვება</th>
+              <th>ჯამი</th>
+            </tr>
+          </thead>
+          <tbody id="quantBody"></tbody>
+          <tfoot id="quantFoot"></tfoot>
+        </table>
+      </div>
+    </div>
+
+    <!-- Day detail -->
+    <div class="card">
+      <h2><span class="h2-ico">🍽</span> კონკრეტული დღე — ვინ ჭამა</h2>
+      <div class="row" style="margin-bottom:10px">
+        <input id="dayDate" type="date" class="ltr" />
+        <button id="dayBtn" class="ghost">ჩვენება</button>
+        <span id="dayCount" style="color:var(--muted)"></span>
+      </div>
+      <div class="chips" id="dayWindowChips" style="margin-bottom:10px">
+        <button class="chip active" data-window="">ყველა</button>
+        <button class="chip" data-window="1">პირველი კვება</button>
+        <button class="chip" data-window="2">მეორე კვება</button>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th class="ltr">ბარათის ID</th><th>კვების რაოდენობა</th><th class="ltr">დროები</th></tr></thead>
+          <tbody id="dayBody"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <script src="/static/reports.js"></script>
+</body>
+</html>

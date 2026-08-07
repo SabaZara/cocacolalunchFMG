@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html lang="ka">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+  <title>სასადილო — ბარათის შემოწმება</title>
+  <link rel="stylesheet" href="/static/kiosk.css" />
+</head>
+<body>
+  <!-- Hidden, always-focused capture field. The USB reader "types" the card
+       id here and presses Enter. Also accepts manual typing for testing. -->
+  <input id="capture" type="text" autocomplete="off" autocapitalize="off"
+         autocorrect="off" spellcheck="false" inputmode="none" aria-hidden="true" />
+
+  <main id="screen" class="state-neutral">
+    <div class="big" id="bigText">დაადეთ ბარათი</div>
+    <div class="sub" id="subText"></div>
+  </main>
+
+  <button id="beepToggle" class="beep-toggle" title="ხმა">🔔</button>
+
+  <script src="/static/kiosk.js"></script>
+</body>
+</html>

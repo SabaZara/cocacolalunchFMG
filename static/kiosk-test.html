@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="ka">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>კიოსკის ტესტი — ბარათის სიმულაცია</title>
+  <link rel="stylesheet" href="/static/kiosk-test.css" />
+</head>
+<body>
+  <aside class="panel">
+    <header>
+      <h1>კიოსკის ტესტი</h1>
+      <p>რეალური კიოსკის გვერდში იგზავნება Enter ისე, როგორც USB ბარათის წამკითხველი აგზავნის.</p>
+    </header>
+
+    <section class="group">
+      <h2>სწრაფი ბარათები</h2>
+      <div class="grid">
+        <button data-card="1001">1001 აქტიური</button>
+        <button data-card="1002">1002 აქტიური</button>
+        <button data-card="1003">1003 აქტიური</button>
+        <button data-card="0573856032">0573856032 ნულებით</button>
+        <button data-card="9999">9999 გათიშული</button>
+        <button data-card="UNKNOWN-CARD">უცნობი</button>
+      </div>
+    </section>
+
+    <section class="group">
+      <h2>სცენარები</h2>
+      <button id="repeatBtn" class="wide">იგივე ბარათი ორჯერ: 1002</button>
+      <button id="sequenceBtn" class="wide">სრული მიმდევრობა</button>
+    </section>
+
+    <section class="group">
+      <h2>ხელით შეყვანა</h2>
+      <div class="manual">
+        <input id="manualCard" type="text" placeholder="ბარათის ID" />
+        <button id="manualBtn">გაგზავნა</button>
+      </div>
+    </section>
+
+    <section class="group">
+      <h2>შედეგები</h2>
+      <ol id="log"></ol>
+      <button id="clearBtn" class="wide ghost">გასუფთავება</button>
+    </section>
+  </aside>
+
+  <main class="preview">
+    <iframe id="kioskFrame" src="/" title="კიოსკის ეკრანი"></iframe>
+  </main>
+
+  <script src="/static/kiosk-test.js"></script>
+</body>
+</html>
