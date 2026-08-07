@@ -37,6 +37,7 @@
     bulkCount: document.getElementById("bulkCount"),
     deleteAllBtn: document.getElementById("deleteAllBtn"),
     updateBtn: document.getElementById("updateBtn"),
+    updateSafeBtn: document.getElementById("updateSafeBtn"),
     updateMsg: document.getElementById("updateMsg"),
     updateVer: document.getElementById("updateVer"),
     backupMsg: document.getElementById("backupMsg"),
@@ -456,6 +457,34 @@
       .then(function (s) {
         if (s && s.version) els.updateVer.textContent = "ვერსია v" + s.version + " • " + (s.repo || "");
       }).catch(function () {});
+
+    // Safe update: download the new code but DON'T restart. Python keeps
+    // running the old code until the process restarts, which happens by itself
+    // at the next login — so scanning is never interrupted mid-day.
+    if (els.updateSafeBtn) {
+      els.updateSafeBtn.addEventListener("click", function () {
+        if (!confirm("ჩამოიტვირთოს უახლესი კოდი GitHub-იდან?\n\n" +
+                     "აპლიკაცია არ გადაიტვირთება — სკანირება გაგრძელდება.\n" +
+                     "ახალი ვერსია ამოქმედდება ლეპტოპის შემდეგი ჩართვისას.")) return;
+        els.updateSafeBtn.disabled = true;
+        notice(els.updateMsg, "მიმდინარეობს ჩამოტვირთვა…", "warn");
+        api("POST", "/api/update?restart=false").then(function (res) {
+          if (!res.ok || !(res.j && res.j.ok)) {
+            var out = res.j && res.j.output ? "<br><small>" + esc(res.j.output) + "</small>" : "";
+            notice(els.updateMsg, "ჩამოტვირთვა ვერ მოხერხდა." + out, "bad");
+          } else {
+            notice(els.updateMsg,
+              "კოდი ჩამოიტვირთა ✓ — აპი აგრძელებს მუშაობას (v" +
+              esc(res.j.version_before_restart || "") + ").<br>" +
+              "ახალი ვერსია ამოქმედდება ლეპტოპის შემდეგი ჩართვისას.", "ok");
+          }
+          els.updateSafeBtn.disabled = false;
+        }).catch(function () {
+          notice(els.updateMsg, "ჩამოტვირთვა ვერ მოხერხდა (კავშირი).", "bad");
+          els.updateSafeBtn.disabled = false;
+        });
+      });
+    }
 
     els.updateBtn.addEventListener("click", function () {
       if (!confirm("ჩამოიტვირთოს უახლესი კოდი GitHub-იდან და გადაიტვირთოს აპლიკაცია?\n(მონაცემები არ წაიშლება)")) return;

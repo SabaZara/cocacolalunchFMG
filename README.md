@@ -112,9 +112,10 @@ http://127.0.0.1:8000/
 screen shows **„დაადეთ ბარათი"** and an
 invisible, always-focused field captures the card tap. Results:
 
-* **Allowed** → full green, huge **„ნებადართულია"**, with the time and how many
-  meals remain today. A card that was registered by this very tap also shows
-  **„ახალი ბარათი დარეგისტრირდა"**.
+* **Allowed** → full green, huge **„ნებადართულია"**, with the time and either
+  **„დარჩა: N"** or **„მეტი აღარ გაქვთ"** when that was the last meal. A card
+  registering itself on this tap is deliberately *not* announced — to the
+  person at the reader it is just a normal allowed scan.
 * **Denied** → full red, huge **„უარყოფილია"**, with a Georgian reason:
   * **„დღის ლიმიტი ამოიწურა"** — the daily limit is used up
   * **„ბარათი გათიშულია"** — card was deactivated by an admin
@@ -282,11 +283,54 @@ invalidated and could otherwise be forged).
 
 ---
 
+## Start automatically when the laptop turns on
+
+Run **`install-autostart.bat` once** (right-click → *Run as administrator* if it
+complains). It registers two Windows Scheduled Tasks:
+
+| Task | When | What it does |
+|---|---|---|
+| `LunchKioskStartup` | every logon | starts app + proxy + tunnel and opens the kiosk screen |
+| `LunchKioskWatchdog` | every 5 min | checks `/healthz`; relaunches the app if it is not answering |
+
+After that: **turn the laptop on and it is ready to scan.** Nothing to click.
+
+**Shutting down stays entirely manual** — neither task ever stops or closes
+anything. Shut the laptop down whenever your day ends, exactly as before.
+
+The watchdog is the safety net for the failure that used to require a physical
+visit: if a remote update (or a crash, or a bad shutdown) leaves the app dead,
+nothing inside the app can revive it — the app *is* what died. The watchdog runs
+outside it and brings it back within ~5 minutes. It writes `watchdog.log`.
+
+To undo all of this, run **`uninstall-autostart.bat`**. Your data and settings
+are untouched; you just go back to starting the kiosk by hand.
+
+---
+
 ## Back up the database
 
 Everything is in the single file **`lunch.db`** (plus `lunch.db-wal` /
-`lunch.db-shm` while running). To back up: stop the app, then copy `lunch.db`
-somewhere safe. To restore: put the file back and start again.
+`lunch.db-shm` while running). To back up manually: stop the app, then copy
+`lunch.db` somewhere safe. To restore: put the file back and start again.
+
+### Automatic backups to a private GitHub repo
+
+The app can upload a snapshot of the database to a **private** GitHub repo, so a
+dead laptop does not mean lost data. Set it up once, from the admin page:
+
+1. On GitHub, create a **new private repository**, e.g. `cocacolalunch-backups`.
+   *It must be private* — it will hold real scan data.
+2. Create a token: **Settings → Developer settings → Personal access tokens →
+   Tokens (classic) → Generate new token**, tick the **`repo`** scope, and copy
+   the token (you only see it once).
+3. On `/admin`, find the backup box: paste `owner/repo` (e.g.
+   `SabaZara/cocacolalunch-backups`) and the token, then save.
+
+From then on it uploads by itself (weekly, plus on startup when due) and keeps
+the newest few snapshots so the repo never grows large. The token is stored on
+the kiosk in `.backup-config.json` (gitignored, preserved across updates) and is
+**never** shown back in the UI or committed to the public code repo.
 
 ---
 
@@ -304,8 +348,27 @@ somewhere safe. To restore: put the file back and start again.
 
 ## Updating
 
-After pulling updates, **hard-refresh the browser (Ctrl+F5)** — static files
-(HTML/CSS/JS) are cached by the browser.
+Two buttons on `/admin`, under **სისტემა**:
+
+**„განახლება რესტარტის გარეშე" (safe — use this by default).** Downloads the new
+code and leaves the app running. Scanning is never interrupted. Python only
+loads new code when the process restarts, so the new version goes live at the
+**next logon** — i.e. the next morning you turn the laptop on.
+
+**„განახლება + გადატვირთვა".** Applies immediately, but the app is down for
+~10 seconds while it restarts. Use it when you need a fix live right now.
+
+> The restart path is what can strand the kiosk: the app kills itself and, if
+> the relaunch fails, nothing inside the app is left to fix it — you get a
+> `502 upstream error` on the tunnel and someone has to walk to the PC. Once
+> `install-autostart.bat` is set up, the watchdog covers this within ~5 minutes.
+
+Either way, local data (`.env`, `lunch.db`, `.app-config.json`,
+`.backup-config.json`, `backups/`) is preserved, and the previous code is
+snapshotted to `.rollback/` first.
+
+After a code update, **hard-refresh the browser (Ctrl+F5)** — static files
+(HTML/CSS/JS) are cached by the browser. The kiosk screen reloads itself.
 
 ---
 

@@ -67,13 +67,12 @@
   function showResult(data) {
     if (data && data.status === "ALLOWED") {
       var sub = data.scanned_at ? ("დრო: " + data.scanned_at) : "";
+      // Only how many meals are left today. A card registering itself on this
+      // tap is deliberately NOT announced — to the person at the reader it is
+      // an ordinary allowed scan, and the count is the only useful fact.
       if (typeof data.remaining === "number") {
-        // Show how many meals remain today for this card.
-        sub += (sub ? "  •  " : "") + "დარჩა: " + data.remaining;
-      }
-      // A card the system had never seen was just registered by this tap.
-      if (data.registered) {
-        sub += (sub ? "  •  " : "") + "ახალი ბარათი დარეგისტრირდა";
+        sub += (sub ? "  •  " : "") +
+          (data.remaining > 0 ? "დარჩა: " + data.remaining : "მეტი აღარ გაქვთ");
       }
       setState("allowed", "ნებადართულია", sub);
       beep(true);

@@ -170,8 +170,10 @@ def main() -> int:
         src = extracted / d
         if src.exists():
             copied += _copy_tree(src, ROOT / d)
-    # tests code (but NOT tests/data)
+    # tests code (but NOT tests/data). Create the folder first: an install that
+    # never had tests/ (or had it deleted) must not crash the whole update.
     if COPY_TESTS_CODE and (extracted / "tests").exists():
+        (ROOT / "tests").mkdir(parents=True, exist_ok=True)
         for item in (extracted / "tests").glob("*.py"):
             shutil.copy2(item, ROOT / "tests" / item.name)
             copied += 1

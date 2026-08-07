@@ -134,11 +134,18 @@
     <div class="card">
       <h2><span class="h2-ico">🔄</span> სისტემა</h2>
       <div class="row">
-        <button id="updateBtn">განახლება GitHub-იდან</button>
+        <button id="updateSafeBtn">განახლება რესტარტის გარეშე</button>
+        <button id="updateBtn" class="ghost">განახლება + გადატვირთვა</button>
         <span class="spacer" style="flex:1"></span>
         <span id="updateVer" style="color:var(--muted)"></span>
       </div>
-      <div class="hint" style="margin-top:8px">ჩამოტვირთავს უახლეს კოდს და გადატვირთავს აპს. მონაცემები (ბარათები, .env) უცვლელი რჩება. დასრულების შემდეგ განაახლეთ გვერდი (Ctrl+F5).</div>
+      <div class="hint" style="margin-top:8px">
+        <b>რესტარტის გარეშე</b> (უსაფრთხო): ჩამოტვირთავს კოდს, აპი მუშაობს ისე როგორც არის.
+        ახალი ვერსია ამოქმედდება ლეპტოპის შემდეგი ჩართვისას. სკანირება არ წყდება.
+        <br>
+        <b>გადატვირთვით</b>: მაშინვე ამოქმედდება, მაგრამ აპი ~10 წამით ითიშება.
+        მონაცემები (ბარათები, .env) ორივე შემთხვევაში უცვლელი რჩება.
+      </div>
       <div id="updateMsg"></div>
     </div>
   </div>
