@@ -142,4 +142,9 @@ def healthz() -> JSONResponse:
 @app.get("/api/version", include_in_schema=False)
 def version() -> JSONResponse:
     from . import __version__
-    return JSONResponse({"version": __version__})
+    return JSONResponse({
+        "version": __version__,
+        # Which location this is - shown in the admin topbar so two
+        # identical-looking admin pages can be told apart at a glance.
+        "location": get_settings().location_name,
+    })

@@ -39,6 +39,9 @@ class Settings:
     port: int
     db_path: Path
     seed_sample_cards: bool
+    # Shown in the admin/reports topbar. Several kiosks share an identical UI,
+    # so this labels which location you are actually looking at.
+    location_name: str
     # The kiosk PC's clock runs AHEAD of real time by this many minutes, so
     # recorded scan times look later than reality. Reports subtract this to
     # show/bucket REAL times. Code default (not .env) so remote updates can
@@ -103,6 +106,7 @@ def get_settings() -> Settings:
     # Default FALSE: a production kiosk should start with only the admin and the
     # real imported cards, not demo data. Tests/dev can set it true.
     seed_sample_cards = _get_bool("SEED_SAMPLE_CARDS", False)
+    location_name = _get("LOCATION_NAME", "").strip()
 
     try:
         kiosk_clock_ahead_min = int(_get("KIOSK_CLOCK_AHEAD_MINUTES", "14"))
@@ -124,6 +128,7 @@ def get_settings() -> Settings:
         port=port,
         db_path=db_path,
         seed_sample_cards=seed_sample_cards,
+        location_name=location_name,
         kiosk_clock_ahead_min=kiosk_clock_ahead_min,
         meal1_start=meal1_start,
         meal1_end=meal1_end,
