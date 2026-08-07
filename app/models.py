@@ -1,10 +1,11 @@
 """Database models.
 
 people  — one row per ID card (identified by card_id; name optional, hidden in
-          UI). daily_limit = how many meals this card may claim per local day.
-scans   — one row per claimed meal. Multiple meals per day are allowed up to the
-          person's daily_limit; the count of today's scans is compared to the
-          limit at scan time (see scan_service).
+          UI). Rows are created automatically the first time a card taps —
+          there is no pre-approved card list (see scan_service).
+scans   — one row per claimed meal. The count of today's scans is compared at
+          scan time against ONE global daily limit that applies to every card
+          (app_config.get_daily_limit), not against a per-card value.
 admins  — operator login accounts.
 """
 from __future__ import annotations
@@ -18,8 +19,10 @@ from .timeutil import utc_now
 # Placeholder used when a card is imported/added without a real name.
 NAME_PLACEHOLDER = "----"
 
-# Default meals allowed per person per day.
-DEFAULT_DAILY_LIMIT = 2
+# Column default for people.daily_limit. The scan path does NOT read this — the
+# real limit is the global app_config.get_daily_limit(). Kept only so the
+# existing column (and old DBs) still have a sane value.
+DEFAULT_DAILY_LIMIT = 1
 
 
 class Person(SQLModel, table=True):
@@ -33,8 +36,12 @@ class Person(SQLModel, table=True):
     # Hidden in the UI for now; defaults to the placeholder.
     full_name: str = Field(default=NAME_PLACEHOLDER)
     department: str | None = Field(default=None)
+    # Set False by an admin to block a lost/stolen card. A deactivated card is
+    # denied at the kiosk and is NOT re-created by auto-registration.
     active: bool = Field(default=True)
-    # How many meals this card may claim per local calendar day.
+    # LEGACY per-card limit. No longer consulted when deciding a scan; the
+    # limit is now one global number in app_config. Retained so existing
+    # databases need no destructive migration.
     daily_limit: int = Field(default=DEFAULT_DAILY_LIMIT, nullable=False)
     created_at: datetime = Field(default_factory=utc_now)
 

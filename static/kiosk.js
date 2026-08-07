@@ -71,6 +71,10 @@
         // Show how many meals remain today for this card.
         sub += (sub ? "  •  " : "") + "დარჩა: " + data.remaining;
       }
+      // A card the system had never seen was just registered by this tap.
+      if (data.registered) {
+        sub += (sub ? "  •  " : "") + "ახალი ბარათი დარეგისტრირდა";
+      }
       setState("allowed", "ნებადართულია", sub);
       beep(true);
     } else {

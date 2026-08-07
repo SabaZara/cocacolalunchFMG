@@ -66,6 +66,15 @@
         <button id="exportCsvBtn" class="ghost small">CSV ექსპორტი</button>
       </div>
 
+      <!-- ONE daily limit for every card (no per-card limits) -->
+      <div class="row" style="margin-bottom:12px;gap:8px;align-items:center">
+        <label for="globalLimit" style="color:var(--muted)">დღიური ლიმიტი (ყველა ბარათისთვის):</label>
+        <input id="globalLimit" type="number" min="0" max="20" step="1"
+               style="width:80px" />
+        <button id="saveLimitBtn" class="small">შენახვა</button>
+        <span id="limitMsg" style="color:var(--muted)"></span>
+      </div>
+
       <!-- filter chips -->
       <div class="chips" id="filterChips" style="margin-bottom:12px">
         <button class="chip active" data-filter="all">ყველა</button>
@@ -81,7 +90,6 @@
       <div class="bulkbar hidden" id="bulkBar">
         <span id="bulkCount" class="bulk-count">0 მონიშნული</span>
         <span class="spacer" style="flex:1"></span>
-        <button class="small ghost" data-bulk="setlimit">ლიმიტის დაყენება</button>
         <button class="small ghost" data-bulk="ate">მონიშვნა: ჭამა</button>
         <button class="small ghost" data-bulk="unate">ჭამის მოხსნა</button>
         <button class="small ghost" data-bulk="activate">ჩართვა</button>

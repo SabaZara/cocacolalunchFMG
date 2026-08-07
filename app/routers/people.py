@@ -1,6 +1,11 @@
 """Card (people) management API. Gated by the tunnel middleware (remote-only).
 
 Works with card_id only; name/department are kept in the DB but not surfaced.
+
+Cards normally appear here on their own: the kiosk registers a card the first
+time it taps. Manual add / import still work for pre-loading a known list.
+The daily limit is global (app_config), so it is reported per card but is the
+same number for all of them and is edited via /api/settings.
 """
 from __future__ import annotations
 
@@ -12,6 +17,7 @@ from pydantic import BaseModel
 from sqlalchemy.exc import IntegrityError
 from sqlmodel import Session, select
 
+from .. import app_config as AC
 from ..config import get_settings
 from ..db import get_session
 from ..importer import import_cards
@@ -31,7 +37,7 @@ class PersonOut(BaseModel):
     active: bool
     ate_today: bool        # True if ate_count > 0 (kept for compatibility)
     ate_count: int         # meals claimed today
-    daily_limit: int       # meals allowed per day
+    daily_limit: int       # the GLOBAL limit — same value for every card
     # Present but hidden in the UI for now (kept so re-enabling is trivial).
     full_name: str
     department: str | None = None
@@ -40,7 +46,8 @@ class PersonOut(BaseModel):
 class PersonCreate(BaseModel):
     card_id: str
     active: bool = True
-    daily_limit: int | None = None
+    # Names can be filled in later; blank means the "----" placeholder.
+    full_name: str | None = None
 
 
 class PersonUpdate(BaseModel):
@@ -48,7 +55,6 @@ class PersonUpdate(BaseModel):
     active: bool | None = None
     full_name: str | None = None
     department: str | None = None
-    daily_limit: int | None = None
 
 
 def _ate_today_counts(session: Session) -> dict[int, int]:
@@ -71,7 +77,7 @@ def _to_out(p: Person, ate_count: int) -> PersonOut:
         active=p.active,
         ate_today=ate_count > 0,
         ate_count=ate_count,
-        daily_limit=int(p.daily_limit),
+        daily_limit=AC.get_daily_limit(),   # global, not per-card
         full_name=p.full_name,
         department=p.department,
     )
@@ -100,9 +106,11 @@ def create_person(
     card_id = normalize_card_id(payload.card_id)
     if not card_id:
         raise HTTPException(status_code=422, detail="ბარათის ID სავალდებულოა.")
-    person = Person(card_id=card_id, full_name=NAME_PLACEHOLDER, active=payload.active)
-    if payload.daily_limit is not None:
-        person.daily_limit = max(int(payload.daily_limit), 0)
+    person = Person(
+        card_id=card_id,
+        full_name=(payload.full_name or "").strip() or NAME_PLACEHOLDER,
+        active=payload.active,
+    )
     session.add(person)
     try:
         session.commit()
@@ -134,8 +142,6 @@ def update_person(
         person.full_name = payload.full_name
     if payload.department is not None:
         person.department = payload.department
-    if payload.daily_limit is not None:
-        person.daily_limit = max(int(payload.daily_limit), 0)
 
     session.add(person)
     try:
@@ -176,8 +182,8 @@ def set_ate_today(
     ).all()
 
     if payload.ate:
-        # top up to the daily limit
-        need = max(int(person.daily_limit) - len(todays), 0)
+        # top up to the global daily limit
+        need = max(AC.get_daily_limit() - len(todays), 0)
         for _ in range(need):
             session.add(Scan(person_id=person_id, card_id=person.card_id,
                              scanned_at=now, local_date=today))
@@ -223,7 +229,9 @@ class BulkRequest(BaseModel):
     action: str            # delete | activate | deactivate | ate | unate | setlimit
     ids: list[int] | None = None
     all: bool = False      # apply to every card (ignores ids)
-    value: int | None = None  # for setlimit: the new daily limit
+    # setlimit now sets the ONE global limit (cards have no individual limit),
+    # so `ids` / `all` are ignored for that action.
+    value: int | None = None
 
 
 _BULK_ACTIONS = {"delete", "activate", "deactivate", "ate", "unate", "setlimit"}
@@ -241,6 +249,16 @@ def _target_people(session: Session, req: BulkRequest) -> list[Person]:
 def bulk(req: BulkRequest, session: Session = Depends(get_session)) -> dict:
     if req.action not in _BULK_ACTIONS:
         raise HTTPException(status_code=422, detail="უცნობი მოქმედება.")
+
+    # setlimit changes the single global limit — no card rows are touched, so
+    # it is handled before any per-person work.
+    if req.action == "setlimit":
+        try:
+            limit = AC.set_daily_limit(req.value)
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc))
+        return {"ok": True, "action": "setlimit", "affected": 0,
+                "daily_limit": limit}
 
     people = _target_people(session, req)
     affected = 0
@@ -271,12 +289,13 @@ def bulk(req: BulkRequest, session: Session = Depends(get_session)) -> dict:
         tz = get_settings().tz
         now = utc_now()
         today = local_date_for(now, tz)
+        limit = AC.get_daily_limit()
         for p in people:
             todays = session.exec(
                 select(Scan).where(Scan.person_id == p.id, Scan.local_date == today)
             ).all()
             if req.action == "ate":
-                need = max(int(p.daily_limit) - len(todays), 0)
+                need = max(limit - len(todays), 0)
                 for _ in range(need):
                     session.add(Scan(person_id=p.id, card_id=p.card_id,
                                      scanned_at=now, local_date=today))
@@ -289,15 +308,6 @@ def bulk(req: BulkRequest, session: Session = Depends(get_session)) -> dict:
                     affected += 1
         session.commit()
 
-    elif req.action == "setlimit":
-        new_limit = max(int(req.value or 0), 0)
-        for p in people:
-            if p.daily_limit != new_limit:
-                p.daily_limit = new_limit
-                session.add(p)
-                affected += 1
-        session.commit()
-
     return {"ok": True, "action": req.action, "affected": affected}
 
 
@@ -305,6 +315,7 @@ def bulk(req: BulkRequest, session: Session = Depends(get_session)) -> dict:
 def export_people_csv(session: Session = Depends(get_session)) -> Response:
     """Export the full card list (id, status, today's meals, limit) as Georgian CSV."""
     counts = _ate_today_counts(session)
+    limit = AC.get_daily_limit()
     people = session.exec(select(Person).order_by(Person.card_id)).all()
     buf = io.StringIO()
     w = csv.writer(buf)
@@ -314,7 +325,7 @@ def export_people_csv(session: Session = Depends(get_session)) -> Response:
             p.card_id,
             "აქტიური" if p.active else "გათიშული",
             counts.get(p.id, 0),
-            int(p.daily_limit),
+            limit,
         ])
     body = buf.getvalue().encode("utf-8-sig")  # BOM so Excel shows Georgian
     return Response(

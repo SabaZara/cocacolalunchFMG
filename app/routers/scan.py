@@ -21,6 +21,8 @@ class ScanResponse(BaseModel):
     scanned_at: str | None = None
     remaining: int | None = None
     limit: int | None = None
+    # True when this tap registered a card the app had never seen before.
+    registered: bool = False
 
 
 @router.post("/scan", response_model=ScanResponse)

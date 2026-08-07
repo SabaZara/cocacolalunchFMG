@@ -2,11 +2,23 @@
 
 A single-PC cafeteria access system for ~250 people. Each person has a unique
 ID card. They tap the card on a USB reader at one kiosk station to claim their
-daily meal. **Each person may eat up to a per-card daily limit (default 2 meals
-per calendar day); you can change the limit per card or in bulk from admin.**
-You (the operator)
-manage cards and view reports **remotely over the internet**; the company that
-runs the kiosk only ever sees the scan screen.
+daily meal.
+
+**There is no pre-approved list of cards.** A card the system has never seen is
+registered automatically on its first tap, and that tap counts as a meal — so
+nobody is turned away at the kiosk and the card list builds itself from real
+usage. Names are optional and can be filled in later.
+
+**Every card has the same daily limit** — one number (default **1 meal per
+calendar day**) that you change once, from the admin page, for everybody. There
+are no per-card limits.
+
+The one way to block somebody is to **deactivate** their card in admin (lost or
+stolen card, person left): a deactivated card is denied on tap and is *not*
+silently re-registered.
+
+You (the operator) manage cards and view reports **remotely over the internet**;
+the company that runs the kiosk only ever sees the scan screen.
 
 All user-facing text — the kiosk, admin, reports, errors, and every exported
 Excel/CSV file — is in **Georgian (ქართული)**. Internal scan statuses stay in
@@ -100,11 +112,14 @@ http://127.0.0.1:8000/
 screen shows **„დაადეთ ბარათი"** and an
 invisible, always-focused field captures the card tap. Results:
 
-* **Allowed** → full green, huge **„ნებადართულია"**, with the time below.
+* **Allowed** → full green, huge **„ნებადართულია"**, with the time and how many
+  meals remain today. A card that was registered by this very tap also shows
+  **„ახალი ბარათი დარეგისტრირდა"**.
 * **Denied** → full red, huge **„უარყოფილია"**, with a Georgian reason:
-  * **„უცნობი ბარათი"** — unknown card
-  * **„ბარათი გათიშულია"** — card is inactive
-  * **„დღეს უკვე ნაჭამია"** — already eaten today
+  * **„დღის ლიმიტი ამოიწურა"** — the daily limit is used up
+  * **„ბარათი გათიშულია"** — card was deactivated by an admin
+  * **„უცნობი ბარათი"** — nothing was read from the card (empty tap). An
+    genuinely *unknown* card is no longer denied: it registers itself.
 
 The screen auto-returns to neutral after ~2.5s and debounces double taps. A
 small 🔔 button (bottom-right) toggles an optional beep. No names or photos are
@@ -167,17 +182,30 @@ Do not include `https://` in `NGROK_DOMAIN`. If you paste it accidentally,
 
 ## Managing cards
 
+Cards normally appear here **on their own** — the kiosk registers each card the
+first time it taps, so you do not have to load anything up front.
+
 On `/admin`:
 
-* **Search** cards by card ID; the list shows card ID, active, and ate-today.
-* **Add a card** by typing an ID, or click **„ბარათის წაკითხვა"** and tap a
-  card to fill it in. New cards get the name placeholder `----`.
-* **Edit / reassign / deactivate / delete** a card. Deactivating keeps history;
-  deleting removes the card and its scans.
+* **Daily limit** — one field at the top of the card list. It applies to
+  **every card**; save it and the next tap already uses the new number.
+* **Search** cards by card ID; the list shows card ID, active, today's meals
+  out of the limit, and the limit itself.
+* **Add a card** manually by typing an ID, or click **„ბარათის წაკითხვა"** and
+  tap a card to fill it in. New cards get the name placeholder `----`. This is
+  optional — it only pre-loads a card that has not tapped yet.
+* **Edit / reassign / deactivate / delete** a card. **Deactivating is how you
+  block somebody**: the card is denied at the kiosk and will not be
+  re-registered by a tap. Deactivating keeps history; deleting removes the card
+  and its scans (and a later tap would register it again as a fresh card).
 * Assigning a card ID that already exists shows a Georgian error
   (**„ეს ბარათი უკვე მინიჭებულია."**).
 
-### Bulk import ~250 cards (.xlsx — primary)
+### Bulk import ~250 cards (.xlsx — primary) — optional
+
+Importing is no longer required, since unknown cards register themselves. It is
+still useful to pre-load a known list (so cards show up in reports before their
+first tap).
 
 Prepare an Excel file with **one card ID per line in the first column** (an
 optional `card_id` header is fine; a `.csv` works too). On `/admin` →

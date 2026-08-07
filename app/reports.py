@@ -15,6 +15,7 @@ from openpyxl import Workbook
 from openpyxl.styles import Alignment, Font, PatternFill
 from sqlmodel import Session, func, select
 
+from . import app_config as AC
 from .config import get_settings
 from .models import Person, Scan
 from .timeutil import local_date_for, local_time_str, to_local, utc_now
@@ -280,6 +281,7 @@ def attendance(session: Session, frm: date, to: date) -> dict:
 
     days = _days_in_range(frm, to)
     single = days == 1
+    limit = AC.get_daily_limit()   # one global limit for every card
     rows = []
     total_ate = 0
     for p in active_people:
@@ -292,7 +294,7 @@ def attendance(session: Session, frm: date, to: date) -> dict:
                 "days_attended": n,
                 "attended": n > 0,
                 "meals": meal_count.get(p.id, 0),       # total meals in range
-                "daily_limit": int(p.daily_limit),
+                "daily_limit": limit,
             }
         )
     if not single:

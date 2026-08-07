@@ -58,42 +58,106 @@ def test_known_active_card_allowed_and_records(app_ctx):
     j = r.json()
     assert j["status"] == "ALLOWED"
     assert j["scanned_at"]  # local time string present
-    # default daily limit is 2 -> after the first meal, 1 remains
-    assert j["remaining"] == 1 and j["limit"] == 2
+    # default global limit is 1 -> nothing remains after the first meal
+    assert j["remaining"] == 0 and j["limit"] == 1
+    assert j["registered"] is False  # card already existed (seeded)
 
 
-def test_daily_limit_two_meals_then_denied(app_ctx):
-    """Default limit 2: two meals allowed, the third denied (limit reached)."""
+def test_default_limit_one_meal_then_denied(app_ctx):
+    """Default global limit 1: one meal allowed, the second denied."""
     ctx = app_ctx
     _seed_cards(ctx)
     c = ctx["client"]
     j1 = c.post("/api/scan", json={"card_id": "1001"}).json()
-    assert j1["status"] == "ALLOWED" and j1["remaining"] == 1
+    assert j1["status"] == "ALLOWED" and j1["remaining"] == 0
     j2 = c.post("/api/scan", json={"card_id": "1001"}).json()
-    assert j2["status"] == "ALLOWED" and j2["remaining"] == 0
-    j3 = c.post("/api/scan", json={"card_id": "1001"}).json()
-    assert j3["status"] == "DENIED"
-    assert j3["reason"] == "დღის ლიმიტი ამოიწურა"
+    assert j2["status"] == "DENIED"
+    assert j2["reason"] == "დღის ლიმიტი ამოიწურა"
 
 
-def test_daily_limit_one_respected(app_ctx):
-    """A card set to limit 1 behaves like the old once-per-day rule."""
+def test_global_limit_applies_to_every_card(app_ctx):
+    """Raising the ONE limit changes how many meals every card gets."""
     ctx = app_ctx
     _login(ctx)
     H = ctx["headers"]
     c = ctx["client"]
-    pid = c.post("/api/people", headers=H, json={"card_id": "ONE1", "daily_limit": 1}).json()["id"]
-    assert c.post("/api/scan", json={"card_id": "ONE1"}).json()["status"] == "ALLOWED"
-    j = c.post("/api/scan", json={"card_id": "ONE1"}).json()
+
+    r = c.post("/api/settings", headers=H, json={"daily_limit": 3})
+    assert r.status_code == 200 and r.json()["daily_limit"] == 3
+
+    # A brand-new card immediately gets the new limit — no per-card setup.
+    for expected_remaining in (2, 1, 0):
+        j = c.post("/api/scan", json={"card_id": "GLOB1"}).json()
+        assert j["status"] == "ALLOWED"
+        assert j["remaining"] == expected_remaining and j["limit"] == 3
+    j = c.post("/api/scan", json={"card_id": "GLOB1"}).json()
     assert j["status"] == "DENIED" and j["reason"] == "დღის ლიმიტი ამოიწურა"
 
+    # Lowering it below what someone already ate denies the next tap.
+    assert c.post("/api/settings", headers=H, json={"daily_limit": 1}).json()["daily_limit"] == 1
+    j = c.post("/api/scan", json={"card_id": "GLOB1"}).json()
+    assert j["status"] == "DENIED" and j["limit"] == 1
 
-def test_unknown_card_denied(app_ctx):
+    # Out-of-range / non-numeric values are rejected; endpoint stays gated.
+    assert c.post("/api/settings", headers=H, json={"daily_limit": -1}).status_code == 422
+    assert c.post("/api/settings", headers=H, json={"daily_limit": 999}).status_code == 422
+    assert c.post("/api/settings", json={"daily_limit": 2}).status_code == 403
+
+
+def test_unknown_card_auto_registers_and_is_allowed(app_ctx):
+    """The core new rule: a card nobody imported is added by its first tap."""
     ctx = app_ctx
-    _seed_cards(ctx)
-    j = ctx["client"].post("/api/scan", json={"card_id": "DOES-NOT-EXIST"}).json()
+    _login(ctx)
+    H = ctx["headers"]
+    c = ctx["client"]
+
+    # The card does not exist yet.
+    assert c.get("/api/people?q=BRANDNEW", headers=H).json() == []
+
+    j = c.post("/api/scan", json={"card_id": "BRANDNEW"}).json()
+    assert j["status"] == "ALLOWED"
+    assert j["registered"] is True          # the tap created the card
+    assert j["remaining"] == 0 and j["limit"] == 1
+    assert j["scanned_at"]
+
+    # It is now a normal, active card in the admin list, with the meal counted.
+    listed = c.get("/api/people?q=BRANDNEW", headers=H).json()
+    assert len(listed) == 1
+    assert listed[0]["card_id"] == "BRANDNEW"
+    assert listed[0]["active"] is True
+    assert listed[0]["ate_count"] == 1
+    assert listed[0]["full_name"] == "----"  # name can be filled in later
+
+    # A second tap is a normal limit denial, and does NOT re-register.
+    j2 = c.post("/api/scan", json={"card_id": "BRANDNEW"}).json()
+    assert j2["status"] == "DENIED" and j2["reason"] == "დღის ლიმიტი ამოიწურა"
+    assert j2["registered"] is False
+    assert len(c.get("/api/people?q=BRANDNEW", headers=H).json()) == 1
+
+
+def test_auto_registered_card_preserves_leading_zeros(app_ctx):
+    """A never-seen leading-zero card registers verbatim (no numeric coercion)."""
+    ctx = app_ctx
+    _login(ctx)
+    H = ctx["headers"]
+    c = ctx["client"]
+    j = c.post("/api/scan", json={"card_id": "  0009911  "}).json()
+    assert j["status"] == "ALLOWED" and j["registered"] is True
+    listed = {p["card_id"] for p in c.get("/api/people", headers=H).json()}
+    assert "0009911" in listed        # trimmed, zeros intact
+
+
+def test_blank_card_id_denied_and_registers_nothing(app_ctx):
+    ctx = app_ctx
+    _login(ctx)
+    H = ctx["headers"]
+    c = ctx["client"]
+    before = len(c.get("/api/people", headers=H).json())
+    j = c.post("/api/scan", json={"card_id": "   "}).json()
     assert j["status"] == "DENIED"
     assert j["reason"] == "უცნობი ბარათი"
+    assert j["registered"] is False
+    assert len(c.get("/api/people", headers=H).json()) == before
 
 
 def test_inactive_card_denied(app_ctx):
@@ -102,6 +166,31 @@ def test_inactive_card_denied(app_ctx):
     j = ctx["client"].post("/api/scan", json={"card_id": "9999"}).json()
     assert j["status"] == "DENIED"
     assert j["reason"] == "ბარათი გათიშულია"
+
+
+def test_deactivated_card_is_not_resurrected_by_auto_register(app_ctx):
+    """Deactivation must still block a card — auto-registration cannot undo it.
+
+    This is the one way an admin can keep somebody out now that unknown cards
+    register themselves, so it has to hold across repeated taps.
+    """
+    ctx = app_ctx
+    _login(ctx)
+    H = ctx["headers"]
+    c = ctx["client"]
+
+    # Card registers itself, then the admin deactivates it.
+    assert c.post("/api/scan", json={"card_id": "BLOCK1"}).json()["registered"] is True
+    pid = c.get("/api/people?q=BLOCK1", headers=H).json()[0]["id"]
+    assert c.put(f"/api/people/{pid}", headers=H, json={"active": False}).json()["active"] is False
+
+    # Repeated taps stay denied, and the row is neither re-created nor re-activated.
+    for _ in range(3):
+        j = c.post("/api/scan", json={"card_id": "BLOCK1"}).json()
+        assert j["status"] == "DENIED" and j["reason"] == "ბარათი გათიშულია"
+        assert j["registered"] is False
+    listed = c.get("/api/people?q=BLOCK1", headers=H).json()
+    assert len(listed) == 1 and listed[0]["active"] is False
 
 
 def test_midnight_reset(app_ctx):
@@ -147,8 +236,38 @@ def test_concurrent_taps_respect_limit(app_ctx):
         t.join()
 
     allowed = sum(1 for s in results if s == "ALLOWED")
-    # seeded cards use the default limit of 2
-    assert allowed == 2, f"expected exactly 2 ALLOWED, got {allowed}: {results}"
+    # every card uses the global default limit of 1
+    assert allowed == 1, f"expected exactly 1 ALLOWED, got {allowed}: {results}"
+
+
+def test_concurrent_taps_on_an_unregistered_card(app_ctx):
+    """Auto-registration under concurrency: one card row, one meal, no errors.
+
+    Several taps of a never-seen card can hit the INSERT at the same moment;
+    people.card_id is UNIQUE, so the losers must recover instead of 500-ing.
+    """
+    ctx = app_ctx
+    _login(ctx)
+    H = ctx["headers"]
+    results = []
+    lock = threading.Lock()
+
+    def tap():
+        r = ctx["client"].post("/api/scan", json={"card_id": "RACE1"})
+        with lock:
+            results.append((r.status_code, r.json().get("status")))
+
+    threads = [threading.Thread(target=tap) for _ in range(10)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+
+    assert all(code == 200 for code, _ in results), results
+    allowed = sum(1 for _, s in results if s == "ALLOWED")
+    assert allowed == 1, f"expected exactly 1 ALLOWED, got {allowed}: {results}"
+    # exactly ONE card row was created despite the race
+    assert len(ctx["client"].get("/api/people?q=RACE1", headers=H).json()) == 1
 
 
 def test_leading_zeros_preserved_through_scan(app_ctx):
@@ -156,11 +275,9 @@ def test_leading_zeros_preserved_through_scan(app_ctx):
     _seed_cards(ctx)
     j = ctx["client"].post("/api/scan", json={"card_id": "0573856032"}).json()
     assert j["status"] == "ALLOWED"
-    # Second tap still allowed (limit 2); third denied.
+    # Second tap denied at the default global limit of 1.
     j2 = ctx["client"].post("/api/scan", json={"card_id": "0573856032"}).json()
-    assert j2["status"] == "ALLOWED"
-    j3 = ctx["client"].post("/api/scan", json={"card_id": "0573856032"}).json()
-    assert j3["status"] == "DENIED"
+    assert j2["status"] == "DENIED"
 
 
 # --------------------------- admin / CRUD ---------------------------------- #
@@ -204,15 +321,15 @@ def test_admin_toggle_ate_today(app_ctx):
     r = c.post("/api/people", headers=H, json={"card_id": "EAT001"})
     pid = r.json()["id"]
     assert r.json()["ate_today"] is False and r.json()["ate_count"] == 0
-    assert r.json()["daily_limit"] == 2
+    assert r.json()["daily_limit"] == 1   # the global limit
 
-    # mark eaten -> fills up to the daily limit (2)
+    # mark eaten -> fills up to the global daily limit (1)
     r = c.post(f"/api/people/{pid}/ate", headers=H, json={"ate": True})
-    assert r.status_code == 200 and r.json()["ate_count"] == 2
+    assert r.status_code == 200 and r.json()["ate_count"] == 1
 
     # marking again is idempotent (already at the limit)
     r = c.post(f"/api/people/{pid}/ate", headers=H, json={"ate": True})
-    assert r.json()["ate_count"] == 2
+    assert r.json()["ate_count"] == 1
 
     # a real kiosk scan now reports limit reached (consistent with the manual mark)
     j = c.post("/api/scan", json={"card_id": "EAT001"}).json()
@@ -568,7 +685,8 @@ def test_reports_count_people_vs_meals(app_ctx):
     _login(ctx)
     H = ctx["headers"]
     c = ctx["client"]
-    # 1001 has default limit 2 -> eat twice
+    # raise the global limit so one card can legitimately eat twice
+    c.post("/api/settings", headers=H, json={"daily_limit": 2})
     c.post("/api/scan", json={"card_id": "1001"})
     c.post("/api/scan", json={"card_id": "1001"})
 
@@ -860,6 +978,7 @@ def test_weak_password_refused():
         port=8000,
         db_path=__import__("pathlib").Path("x.db"),
         seed_sample_cards=False,
+        location_name="",
         kiosk_clock_ahead_min=14,
         meal1_start="00:00", meal1_end="18:00",
         meal2_start="18:00", meal2_end="24:00",
@@ -881,6 +1000,7 @@ def test_missing_secret_key_refused():
         port=8000,
         db_path=__import__("pathlib").Path("x.db"),
         seed_sample_cards=False,
+        location_name="",
         kiosk_clock_ahead_min=14,
         meal1_start="00:00", meal1_end="18:00",
         meal2_start="18:00", meal2_end="24:00",
