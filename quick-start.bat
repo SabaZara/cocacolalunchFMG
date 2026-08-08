@@ -48,11 +48,25 @@ set "GITHUB_REPO=SabaZara/cocacolalunchFMG"
 set "GITHUB_BRANCH=main"
 for /f "usebackq delims=" %%i in (`"%VENV_PY%" scripts\read_env.py`) do %%i
 
+REM --- flags ---------------------------------------------------------------
+REM   /nobrowser  do not open the kiosk tab (used by the watchdog, which only
+REM               revives a dead app - it must never spawn extra tabs).
+REM   /noupdate   skip the GitHub pull (faster start; the watchdog uses this
+REM               so a revive is immediate instead of waiting on a download).
+set "OPEN_BROWSER=1"
+set "DO_UPDATE=1"
+for %%a in (%*) do (
+  if /I "%%~a"=="/nobrowser" set "OPEN_BROWSER=0"
+  if /I "%%~a"=="/noupdate"  set "DO_UPDATE=0"
+)
+
 REM --- pull latest code from GitHub before launch (best-effort) ------------
 REM So a reboot + quick-start also APPLIES updates. Offline-safe: if the pull
 REM fails (no internet), apply_update leaves the current code untouched and we
 REM launch anyway, so scanning always works. Data (.env, lunch.db) preserved.
-"%VENV_PY%" scripts\apply_update.py
+if "!DO_UPDATE!"=="1" (
+  "%VENV_PY%" scripts\apply_update.py
+)
 
 REM --- stop any previous LUNCH background processes -------------------------
 if exist "lunch-pids.txt" (
@@ -72,13 +86,17 @@ if exist "ngrok.exe" if not "!NGROK_AUTHTOKEN!"=="" if not "!NGROK_DOMAIN!"=="" 
   "%VENV_PY%" scripts\start_hidden.py --label tunnel --log tunnel.log --pid-file lunch-pids.txt -- ".\ngrok.exe" http --url !NGROK_DOMAIN! http://127.0.0.1:!PROXY_PORT!
 )
 
-REM --- give the app a moment to bind, open the kiosk, then close -----------
-"%VENV_PY%" -c "import time;time.sleep(3)" >nul 2>&1
-
-REM Cache-buster: a unique ?t= each launch, so the browser can NEVER serve a
-REM stale/corrupted cached copy of the scan page. (The app also sends
-REM Cache-Control: no-store, but this protects even a poisoned existing cache.)
-set "CB=%RANDOM%%RANDOM%"
-start "" "http://127.0.0.1:!PORT!/?t=!CB!"
+REM --- wait until the app actually answers, then open the kiosk ------------
+REM Waiting on /healthz instead of a blind sleep: the page used to be opened
+REM after a fixed 3s, so on a cold boot the browser hit a not-yet-listening
+REM app and showed an error until someone reloaded it.
+if "!OPEN_BROWSER!"=="1" (
+  "%VENV_PY%" scripts\wait_for_http.py "http://127.0.0.1:!PORT!/healthz" --seconds 60 --label kiosk >nul 2>&1
+  REM Cache-buster: a unique ?t= each launch, so the browser can NEVER serve a
+  REM stale/corrupted cached copy of the scan page. (The app also sends
+  REM Cache-Control: no-store, but this protects even a poisoned existing cache.)
+  set "CB=!RANDOM!!RANDOM!"
+  start "" "http://127.0.0.1:!PORT!/?t=!CB!"
+)
 endlocal
 exit

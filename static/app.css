@@ -171,6 +171,21 @@ td.mono { font-variant-numeric: tabular-nums; font-weight: 600; letter-spacing: 
 }
 .limit-input:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px rgba(43,108,171,.16); }
 
+/* inline name editor. Borderless until hovered/focused so a table full of
+   empty name cells reads as a list, not a wall of input boxes. */
+.name-input {
+  width: 100%; min-width: 120px; padding: 6px 8px; font-size: 14px;
+  border: 1px solid transparent; border-radius: 7px;
+  background: transparent; color: inherit; font-family: inherit;
+}
+.name-input::placeholder { color: var(--muted); opacity: .6; }
+.name-input:hover { border-color: var(--border); background: var(--card); }
+.name-input:focus {
+  outline: none; border-color: var(--accent); background: var(--card);
+  box-shadow: 0 0 0 3px rgba(43,108,171,.16);
+}
+.name-input:disabled { opacity: .5; }
+
 /* toggle switch (used for ate-today + active) */
 .switch { position: relative; display: inline-block; width: 46px; height: 26px; vertical-align: middle; }
 .switch input { opacity: 0; width: 0; height: 0; }

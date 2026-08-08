@@ -70,7 +70,7 @@ if errorlevel 1 (
 )
 
 echo.
-echo Done. Testing the watchdog once now...
+echo Done. Checking the watchdog once now (it will NOT open a browser tab)...
 "%VENV_PY%" "%PROJ%\scripts\watchdog.py" --verbose
 echo.
 echo ===========================================================================

@@ -212,6 +212,34 @@ def test_watchdog_reports_failure_when_revive_does_not_work(tmp_path, monkeypatc
     assert wd.main([]) == 1
 
 
+def test_watchdog_relaunch_never_opens_a_browser_tab(tmp_path, monkeypatch):
+    """Reviving the app must not spawn another kiosk tab.
+
+    quick-start.bat opens the kiosk page, so the watchdog calling it plainly
+    gave the operator a second (and third...) tab every time it ran. It must
+    pass /nobrowser, and /noupdate so a revive is immediate.
+    """
+    root = tmp_path / "install"
+    root.mkdir()
+    (root / ".env").write_text("PORT=8000\n")
+    (root / "quick-start.bat").write_text("@echo off\n")
+    wd = _load_watchdog(monkeypatch, root)
+
+    monkeypatch.setattr(wd.os, "name", "nt")   # exercise the Windows branch
+    captured = {}
+
+    class FakePopen:
+        def __init__(self, cmd, **kwargs):
+            captured["cmd"] = cmd
+
+    monkeypatch.setattr(wd.subprocess, "Popen", FakePopen)
+    assert wd._relaunch(False) is True
+
+    cmd = captured["cmd"]
+    assert "/nobrowser" in cmd, f"watchdog would open a browser tab: {cmd}"
+    assert "/noupdate" in cmd, f"watchdog would stall on a download: {cmd}"
+
+
 def test_watchdog_reads_port_from_env_file(tmp_path, monkeypatch):
     """The port must come from .env without importing the (possibly broken) app."""
     root = tmp_path / "install"

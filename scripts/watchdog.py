@@ -115,8 +115,12 @@ def _relaunch(verbose: bool) -> bool:
             _log("[watchdog] quick-start.bat missing; cannot relaunch.", verbose)
             return False
         try:
+            # /nobrowser: reviving a dead app must never spawn another kiosk
+            # tab — that is how the operator ended up with duplicates.
+            # /noupdate: come back NOW; a GitHub pull would delay the revive.
             subprocess.Popen(
-                ["cmd", "/c", "start", "", "/min", str(starter)],
+                ["cmd", "/c", "start", "", "/min", str(starter),
+                 "/nobrowser", "/noupdate"],
                 cwd=str(ROOT),
                 stdin=subprocess.DEVNULL,
                 stdout=subprocess.DEVNULL,

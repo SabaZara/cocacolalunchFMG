@@ -6,8 +6,14 @@
 (function () {
   "use strict";
 
-  // ---- single flag to re-enable name/department columns later ------------ //
-  var SHOW_NAMES = false;
+  // Names are ON: cards register themselves as anonymous IDs, so the operator
+  // needs a way to put a person to each one. The name cell is edited inline.
+  // Department stays hidden (unused) — flip SHOW_DEPARTMENT to bring it back.
+  var SHOW_NAMES = true;
+  var SHOW_DEPARTMENT = false;
+
+  // Placeholder the server stores when a card has no real name yet.
+  var NAME_PLACEHOLDER = "----";
 
   var els = {
     userLabel: document.getElementById("userLabel"),
@@ -93,8 +99,15 @@
 
   // ----------------------------- filtering -------------------------------- //
   function matchesFilter(p) {
-    // text search (by card id, live)
-    if (searchText && p.card_id.toLowerCase().indexOf(searchText) === -1) return false;
+    // text search: card id OR name, live. Once cards carry names, searching
+    // by name is the natural way to find somebody.
+    if (searchText) {
+      var hay = p.card_id.toLowerCase();
+      if (p.full_name && p.full_name !== NAME_PLACEHOLDER) {
+        hay += " " + p.full_name.toLowerCase();
+      }
+      if (hay.indexOf(searchText) === -1) return false;
+    }
     switch (filter) {
       case "active": return p.active;
       case "inactive": return !p.active;
@@ -108,7 +121,8 @@
   function renderHead() {
     var cols = ['<th class="sel"><input type="checkbox" class="allcheck" id="allCheck" /></th>',
                 '<th class="ltr">ბარათის ID</th>'];
-    if (SHOW_NAMES) { cols.push("<th>სახელი</th>"); cols.push("<th>დეპარტამენტი</th>"); }
+    if (SHOW_NAMES) cols.push("<th>სახელი</th>");
+    if (SHOW_DEPARTMENT) cols.push("<th>დეპარტამენტი</th>");
     cols.push("<th>სტატუსი</th>", "<th>დღეს ნაჭამი</th>", "<th>დღიური ლიმიტი</th>",
               "<th>მოქმედებები</th>");
     els.tableHead.innerHTML = "<tr>" + cols.join("") + "</tr>";
@@ -116,7 +130,9 @@
     if (all) all.addEventListener("change", function () { toggleAll(all.checked); });
   }
 
-  function colspan() { return (SHOW_NAMES ? 6 : 4) + 2; }
+  function colspan() {
+    return 6 + (SHOW_NAMES ? 1 : 0) + (SHOW_DEPARTMENT ? 1 : 0);
+  }
 
   function rowHtml(p) {
     var isSel = !!selected[p.id];
@@ -126,7 +142,20 @@
       '<td class="ltr mono">' + esc(p.card_id) + "</td>",
     ];
     if (SHOW_NAMES) {
-      cells.push("<td>" + esc(p.full_name) + "</td>");
+      // Inline-editable: type a name and it saves on blur / Enter. Cards
+      // arrive anonymous (placeholder "----"), so this is the main way a
+      // human name ever gets attached to a card id.
+      var named = p.full_name && p.full_name !== NAME_PLACEHOLDER;
+      cells.push(
+        '<td><input type="text" class="name-input" data-act="name" ' +
+          'data-id="' + p.id + '" ' +
+          'data-orig="' + esc(named ? p.full_name : "") + '" ' +
+          'value="' + esc(named ? p.full_name : "") + '" ' +
+          'placeholder="სახელი…" ' +
+          'title="დააჭირეთ და ჩაწერეთ სახელი" /></td>'
+      );
+    }
+    if (SHOW_DEPARTMENT) {
       cells.push("<td>" + esc(p.department || "") + "</td>");
     }
     cells.push(
@@ -236,6 +265,52 @@
     });
     renderRows();
   }
+
+  // Save a name when the operator leaves the field (blur) or presses Enter.
+  // No confirm dialog: typing a name is low-stakes and confirming every one
+  // while labelling a stack of cards would be unbearable.
+  function saveName(input) {
+    var pid = input.dataset.id;
+    var val = (input.value || "").trim();
+    var orig = input.dataset.orig || "";
+    if (val === orig) return;                 // nothing changed
+    input.disabled = true;
+    // Clearing the box restores the server's placeholder.
+    api("PUT", "/api/people/" + pid, { full_name: val || NAME_PLACEHOLDER })
+      .then(function (res) {
+        if (!res.ok) {
+          notice(els.globalMsg, (res.j && res.j.detail) || "სახელი ვერ შეინახა.", "bad");
+          input.value = orig;
+        } else {
+          input.dataset.orig = val;
+          // Keep the in-memory list in step so the next auto-refresh does not
+          // flash the old value back into the box.
+          for (var i = 0; i < shown.length; i++) {
+            if (String(shown[i].id) === String(pid)) {
+              shown[i].full_name = val || NAME_PLACEHOLDER;
+              break;
+            }
+          }
+          notice(els.globalMsg, val ? "სახელი შენახულია: " + val : "სახელი მოიხსნა.", "ok");
+        }
+        input.disabled = false;
+      }).catch(function () {
+        input.value = orig;
+        input.disabled = false;
+      });
+  }
+
+  els.tableBody.addEventListener("blur", function (e) {
+    var ni = e.target.closest && e.target.closest('input[data-act="name"]');
+    if (ni) saveName(ni);
+  }, true);   // capture: blur does not bubble
+
+  els.tableBody.addEventListener("keydown", function (e) {
+    var ni = e.target.closest && e.target.closest('input[data-act="name"]');
+    if (!ni) return;
+    if (e.key === "Enter") { e.preventDefault(); ni.blur(); }
+    else if (e.key === "Escape") { ni.value = ni.dataset.orig || ""; ni.blur(); }
+  });
 
   els.tableBody.addEventListener("change", function (e) {
     var rc = e.target.closest("input.rowcheck");
