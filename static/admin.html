@@ -54,6 +54,24 @@
       <div id="importMsg"></div>
     </div>
 
+    <!-- Coca-Cola personnel roster -->
+    <div class="card">
+      <h2><span class="h2-ico">🧾</span> Coca-Cola სია (სახელები)</h2>
+      <div class="row">
+        <input id="rosterFile" type="file" accept=".xls,.xlsx,.csv" />
+        <button id="rosterBtn">ატვირთვა</button>
+        <span class="spacer" style="flex:1"></span>
+        <span id="rosterState" style="color:var(--muted)"></span>
+      </div>
+      <div class="hint" style="margin-top:8px">
+        Coca-Cola-ს ფაილი (CardNo / FirstName / LastName). სახელები ავტომატურად
+        დაუკავშირდება ბარათებს — POS ID გარდაიქმნება Coca-Cola კოდად
+        (მაგ. 3377269862 → 077-03174). ხელით სახელების წერა აღარ დაგჭირდებათ.
+        განმეორებითი ატვირთვა მხოლოდ განაახლებს სიას.
+      </div>
+      <div id="rosterMsg"></div>
+    </div>
+
     <!-- Card list -->
     <div class="card">
       <h2><span class="h2-ico">🪪</span> ბარათები</h2>

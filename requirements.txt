@@ -7,6 +7,9 @@ passlib[bcrypt]==1.7.4
 # but keep the log clean on the kiosk). Hashing/verify work either way.
 bcrypt==4.0.1
 openpyxl==3.1.5
+# Legacy .xls (BIFF) reader. The Coca-Cola personnel export is an old-format
+# .xls, which openpyxl cannot open.
+xlrd==2.0.1
 python-dotenv==1.0.1
 itsdangerous==2.2.0
 python-multipart==0.0.20

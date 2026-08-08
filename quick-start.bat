@@ -66,6 +66,13 @@ REM fails (no internet), apply_update leaves the current code untouched and we
 REM launch anyway, so scanning always works. Data (.env, lunch.db) preserved.
 if "!DO_UPDATE!"=="1" (
   "%VENV_PY%" scripts\apply_update.py
+
+  REM An update can add a new Python package (requirements.txt changed). Only
+  REM start.bat used to install those, so a kiosk that autostarts could end up
+  REM running new code against old dependencies and fail at the feature that
+  REM needed them. Quiet, and offline-safe: if pip cannot reach the internet we
+  REM launch anyway, because scanning must never depend on it.
+  "%VENV_PY%" -m pip install -q -r requirements.txt >nul 2>&1
 )
 
 REM --- stop any previous LUNCH background processes -------------------------

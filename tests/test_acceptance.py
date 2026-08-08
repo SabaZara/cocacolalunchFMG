@@ -126,7 +126,12 @@ def test_unknown_card_auto_registers_and_is_allowed(app_ctx):
     assert listed[0]["card_id"] == "BRANDNEW"
     assert listed[0]["active"] is True
     assert listed[0]["ate_count"] == 1
-    assert listed[0]["full_name"] == "----"  # name can be filled in later
+    # The API reports an unnamed card as blank, not as the internal "----"
+    # placeholder: the UI shows an empty, editable name cell.
+    assert listed[0]["full_name"] == ""
+    assert listed[0]["from_roster"] is False
+    # "BRANDNEW" is not a numeric POS id, so it has no Coca-Cola equivalent.
+    assert listed[0]["cc_code"] == ""
 
     # A second tap is a normal limit denial, and does NOT re-register.
     j2 = c.post("/api/scan", json={"card_id": "BRANDNEW"}).json()
@@ -291,7 +296,7 @@ def test_admin_crud_and_unique_enforcement(app_ctx):
     r = c.post("/api/people", headers=H, json={"card_id": "AAA111"})
     assert r.status_code == 201
     pid = r.json()["id"]
-    assert r.json()["full_name"] == "----"  # placeholder default
+    assert r.json()["full_name"] == ""  # blank until named or on the roster
 
     # duplicate rejected with Georgian error
     r = c.post("/api/people", headers=H, json={"card_id": "AAA111"})
@@ -633,10 +638,15 @@ def test_quantitative_report_windows_and_clock_offset(app_ctx):
     t2 = [t for r in d2["rows"] for t in r["times"]]
     assert "18:06:00" in t2 and "17:56:00" not in t2
 
-    # detail export includes the window column for Excel pivots
+    # The detail export identifies WHO ate and WHEN. The meal-window column was
+    # dropped: what matters operationally is the exact time, and the
+    # first/second split is still available in the quantitative report above.
     de = c.get(f"/api/reports/export?from={d}&to={d}&format=csv", headers=H)
     dt = de.content.decode("utf-8-sig")
-    assert "კვება" in dt and "პირველი კვება" in dt and "მეორე კვება" in dt
+    assert "სახელი" in dt and "Coca-Cola კოდი" in dt
+    assert "ბარათის ID" in dt and "დრო" in dt
+    assert "1001" in dt              # POS id present in the default export
+    assert "000-01001" in dt         # ...alongside its Coca-Cola code
 
 
 def test_editable_meal_split(app_ctx):

@@ -23,19 +23,9 @@
     attCsv: document.getElementById("attCsv"),
     detXlsx: document.getElementById("detXlsx"),
     detCsv: document.getElementById("detCsv"),
-    quantBody: document.getElementById("quantBody"),
-    quantFoot: document.getElementById("quantFoot"),
-    quantPeriod: document.getElementById("quantPeriod"),
-    quantXlsx: document.getElementById("quantXlsx"),
-    quantCsv: document.getElementById("quantCsv"),
-    dayWindowChips: document.getElementById("dayWindowChips"),
-    mealSplit: document.getElementById("mealSplit"),
-    mealSplitSave: document.getElementById("mealSplitSave"),
-    mealSplitMsg: document.getElementById("mealSplitMsg"),
+    detXlsxCc: document.getElementById("detXlsxCc"),
+    detCsvCc: document.getElementById("detCsvCc"),
   };
-
-  // current day-detail meal-window filter: "" | "1" | "2"
-  var dayWindow = "";
 
   function esc(s) {
     return String(s).replace(/[&<>"']/g, function (c) {
@@ -83,48 +73,34 @@
   function loadDay() {
     var d = els.dayDate.value;
     if (!d) return;
-    var url = "/api/reports/day?date=" + d + (dayWindow ? "&window=" + dayWindow : "");
+    var url = "/api/reports/day?date=" + d;
     api(url).then(function (res) {
       var people = res.people != null ? res.people : (res.rows || []).length;
       var meals = res.meals != null ? res.meals : people;
-      var extra = "";
-      if (res.w1 != null && res.w2 != null) {
-        extra = "  •  პირველი: " + res.w1 + "  •  მეორე: " + res.w2;
-      }
-      els.dayCount.textContent = "კაცი: " + people + "  •  კვება: " + meals + extra;
+      els.dayCount.textContent = "კაცი: " + people + "  •  კვება: " + meals;
       els.dayBody.innerHTML = (res.rows || []).map(function (r) {
         var times = (r.times || (r.time ? [r.time] : [])).join(", ");
         var countBadge = '<span class="badge ' + (r.count > 1 ? "warn-badge" : "ok") + '">' + r.count + "</span>";
-        return '<tr><td class="ltr mono">' + esc(r.card_id) + "</td>" +
+        var name = r.full_name
+          ? esc(r.full_name)
+          : '<span style="color:var(--muted)">—</span>';
+        return "<tr><td>" + name + "</td>" +
+               '<td class="ltr mono">' + esc(r.cc_code || "") + "</td>" +
+               '<td class="ltr mono">' + esc(r.card_id) + "</td>" +
                "<td>" + countBadge + '</td><td class="ltr">' + esc(times) + "</td></tr>";
-      }).join("") || '<tr><td colspan="3" style="text-align:center;color:var(--muted);padding:18px">ამ დღეს არავის უჭამია</td></tr>';
+      }).join("") || '<tr><td colspan="5" style="text-align:center;color:var(--muted);padding:18px">ამ დღეს არავის უჭამია</td></tr>';
     });
   }
 
-  function loadQuant() {
-    var f = els.fromDate.value, t = els.toDate.value;
-    if (!f || !t || f > t) return;
-    api("/api/reports/quant?from=" + f + "&to=" + t).then(function (res) {
-      els.quantPeriod.textContent = "პერიოდი: " + res.from + " — " + res.to +
-        "  (" + res.windows.meal1 + " / " + res.windows.meal2 + ")";
-      els.quantBody.innerHTML = (res.rows || []).map(function (r) {
-        return '<tr><td class="ltr">' + esc(r.date) + "</td><td>" + r.meal1 +
-               "</td><td>" + r.meal2 + '</td><td style="font-weight:700">' + r.total + "</td></tr>";
-      }).join("") || '<tr><td colspan="4" style="text-align:center;color:var(--muted)">მონაცემი არ არის</td></tr>';
-      var g = res.grand || {meal1: 0, meal2: 0, total: 0};
-      els.quantFoot.innerHTML =
-        '<tr style="font-weight:800;background:#f1f5fa">' +
-        "<td>ჯამი</td><td>" + g.meal1 + "</td><td>" + g.meal2 +
-        "</td><td>" + g.total + "</td></tr>";
-    });
-  }
-
-  function download(kind, format) {
+  // includePos=false asks for the Coca-Cola-only sheet (no POS card id).
+  function download(kind, format, includePos) {
     var f = els.fromDate.value, t = els.toDate.value;
     if (!f || !t) { notice("აირჩიეთ პერიოდი.", "warn"); return; }
     if (f > t) { notice("საწყისი თარიღი ბოლოზე გვიანია.", "bad"); return; }
     var ep = kind === "attendance" ? "attendance" : "export";
-    window.location.href = "/api/reports/" + ep + "?from=" + f + "&to=" + t + "&format=" + format;
+    var url = "/api/reports/" + ep + "?from=" + f + "&to=" + t + "&format=" + format;
+    if (kind === "detail" && includePos === false) url += "&pos=0";
+    window.location.href = url;
   }
 
   // Quick ranges
@@ -141,18 +117,10 @@
     els.fromDate.value = iso(from);
     els.toDate.value = iso(to);
     loadDaily();
-    loadQuant();
-  }
-
-  function downloadQuant(format) {
-    var f = els.fromDate.value, t = els.toDate.value;
-    if (!f || !t) { notice("აირჩიეთ პერიოდი.", "warn"); return; }
-    if (f > t) { notice("საწყისი თარიღი ბოლოზე გვიანია.", "bad"); return; }
-    window.location.href = "/api/reports/quant-export?from=" + f + "&to=" + t + "&format=" + format;
   }
 
   // Wire up
-  els.applyBtn.addEventListener("click", function () { loadDaily(); loadQuant(); });
+  els.applyBtn.addEventListener("click", function () { loadDaily(); });
   els.dayBtn.addEventListener("click", loadDay);
   els.dayDate.addEventListener("keydown", function (e) { if (e.key === "Enter") loadDay(); });
   document.querySelectorAll("button[data-range]").forEach(function (b) {
@@ -162,44 +130,9 @@
   els.attCsv.addEventListener("click", function () { download("attendance", "csv"); });
   els.detXlsx.addEventListener("click", function () { download("detail", "xlsx"); });
   els.detCsv.addEventListener("click", function () { download("detail", "csv"); });
-  els.quantXlsx.addEventListener("click", function () { downloadQuant("xlsx"); });
-  els.quantCsv.addEventListener("click", function () { downloadQuant("csv"); });
+  if (els.detXlsxCc) els.detXlsxCc.addEventListener("click", function () { download("detail", "xlsx", false); });
+  if (els.detCsvCc) els.detCsvCc.addEventListener("click", function () { download("detail", "csv", false); });
 
-  function loadMealSplit() {
-    api("/api/settings").then(function (s) {
-      if (s && s.meal_split) els.mealSplit.value = s.meal_split;
-    });
-  }
-  els.mealSplitSave.addEventListener("click", function () {
-    var v = els.mealSplit.value;
-    if (!v) { els.mealSplitMsg.textContent = "მიუთითეთ დრო."; return; }
-    if (!confirm("გაყოფის დროის შეცვლა " + v + "-ზე? რეპორტი თავიდან დაითვლება.")) return;
-    els.mealSplitSave.disabled = true;
-    fetch("/api/settings", {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "ngrok-skip-browser-warning": "true" },
-      body: JSON.stringify({ meal_split: v }),
-    }).then(function (r) {
-      return r.json().then(function (j) { return { ok: r.ok, j: j }; });
-    }).then(function (res) {
-      if (res.ok) {
-        els.mealSplitMsg.textContent = "შენახულია ✓";
-        loadQuant(); loadDay();
-      } else {
-        els.mealSplitMsg.textContent = (res.j && res.j.detail) || "ვერ შეინახა.";
-      }
-    }).catch(function () { els.mealSplitMsg.textContent = "ვერ შეინახა."; })
-      .finally(function () { els.mealSplitSave.disabled = false; });
-  });
-  els.dayWindowChips.addEventListener("click", function (e) {
-    var chip = e.target.closest("button.chip");
-    if (!chip) return;
-    dayWindow = chip.dataset.window || "";
-    Array.prototype.forEach.call(els.dayWindowChips.querySelectorAll(".chip"), function (c) {
-      c.classList.toggle("active", c === chip);
-    });
-    loadDay();
-  });
   els.logoutBtn.addEventListener("click", function () {
     fetch("/api/logout", { method: "POST" }).then(function () { window.location.href = "/login"; });
   });
@@ -214,10 +147,8 @@
     els.fromDate.value = today;
     els.toDate.value = today;
     els.dayDate.value = today;
-    loadMealSplit();
-    loadToday();
+      loadToday();
     loadDaily();
-    loadQuant();
     loadDay();
   });
 })();

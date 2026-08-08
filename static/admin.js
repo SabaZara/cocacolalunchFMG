@@ -10,6 +10,7 @@
   // needs a way to put a person to each one. The name cell is edited inline.
   // Department stays hidden (unused) — flip SHOW_DEPARTMENT to bring it back.
   var SHOW_NAMES = true;
+  var SHOW_CC_CODE = true;   // Coca-Cola's own card number
   var SHOW_DEPARTMENT = false;
 
   // Placeholder the server stores when a card has no real name yet.
@@ -28,6 +29,10 @@
     importFile: document.getElementById("importFile"),
     importBtn: document.getElementById("importBtn"),
     importMsg: document.getElementById("importMsg"),
+    rosterFile: document.getElementById("rosterFile"),
+    rosterBtn: document.getElementById("rosterBtn"),
+    rosterMsg: document.getElementById("rosterMsg"),
+    rosterState: document.getElementById("rosterState"),
     search: document.getElementById("search"),
     searchBtn: document.getElementById("searchBtn"),
     clearSearchBtn: document.getElementById("clearSearchBtn"),
@@ -106,6 +111,7 @@
       if (p.full_name && p.full_name !== NAME_PLACEHOLDER) {
         hay += " " + p.full_name.toLowerCase();
       }
+      if (p.cc_code) hay += " " + p.cc_code.toLowerCase();
       if (hay.indexOf(searchText) === -1) return false;
     }
     switch (filter) {
@@ -122,6 +128,7 @@
     var cols = ['<th class="sel"><input type="checkbox" class="allcheck" id="allCheck" /></th>',
                 '<th class="ltr">ბარათის ID</th>'];
     if (SHOW_NAMES) cols.push("<th>სახელი</th>");
+    if (SHOW_CC_CODE) cols.push('<th class="ltr">Coca-Cola კოდი</th>');
     if (SHOW_DEPARTMENT) cols.push("<th>დეპარტამენტი</th>");
     cols.push("<th>სტატუსი</th>", "<th>დღეს ნაჭამი</th>", "<th>დღიური ლიმიტი</th>",
               "<th>მოქმედებები</th>");
@@ -131,7 +138,8 @@
   }
 
   function colspan() {
-    return 6 + (SHOW_NAMES ? 1 : 0) + (SHOW_DEPARTMENT ? 1 : 0);
+    return 6 + (SHOW_NAMES ? 1 : 0) + (SHOW_CC_CODE ? 1 : 0) +
+           (SHOW_DEPARTMENT ? 1 : 0);
   }
 
   function rowHtml(p) {
@@ -142,18 +150,26 @@
       '<td class="ltr mono">' + esc(p.card_id) + "</td>",
     ];
     if (SHOW_NAMES) {
-      // Inline-editable: type a name and it saves on blur / Enter. Cards
-      // arrive anonymous (placeholder "----"), so this is the main way a
-      // human name ever gets attached to a card id.
+      // A name from Coca-Cola's roster is authoritative, so it is shown as
+      // plain text — editing it would only create a private spelling that the
+      // next roster import silently overrides. Cards NOT on the roster stay
+      // editable, which is the only way to label them.
       var named = p.full_name && p.full_name !== NAME_PLACEHOLDER;
-      cells.push(
-        '<td><input type="text" class="name-input" data-act="name" ' +
-          'data-id="' + p.id + '" ' +
-          'data-orig="' + esc(named ? p.full_name : "") + '" ' +
-          'value="' + esc(named ? p.full_name : "") + '" ' +
-          'placeholder="სახელი…" ' +
-          'title="დააჭირეთ და ჩაწერეთ სახელი" /></td>'
-      );
+      if (p.from_roster) {
+        cells.push('<td title="Coca-Cola-ს სიიდან">' + esc(p.full_name) + "</td>");
+      } else {
+        cells.push(
+          '<td><input type="text" class="name-input" data-act="name" ' +
+            'data-id="' + p.id + '" ' +
+            'data-orig="' + esc(named ? p.full_name : "") + '" ' +
+            'value="' + esc(named ? p.full_name : "") + '" ' +
+            'placeholder="სახელი…" ' +
+            'title="დააჭირეთ და ჩაწერეთ სახელი" /></td>'
+        );
+      }
+    }
+    if (SHOW_CC_CODE) {
+      cells.push('<td class="ltr mono">' + esc(p.cc_code || "") + "</td>");
     }
     if (SHOW_DEPARTMENT) {
       cells.push("<td>" + esc(p.department || "") + "</td>");
@@ -430,6 +446,54 @@
     setTimeout(function () { els.captureHint.classList.add("hidden"); }, 4000);
   });
 
+  // --------------------- Coca-Cola roster (names) -------------------------- //
+  // Names come from Coca-Cola's own export rather than being typed by hand:
+  // a scan's POS id converts to their DDD-DDDDD code, which looks up the name.
+  function loadRosterStatus() {
+    if (!els.rosterState) return;
+    api("GET", "/api/people/roster-status").then(function (res) {
+      if (!res.ok || !res.j) return;
+      var n = res.j.count || 0;
+      els.rosterState.textContent = n
+        ? "სიაში: " + n + " ადამიანი ✓"
+        : "სია ჯერ არ არის ატვირთული";
+    });
+  }
+
+  if (els.rosterBtn) {
+    els.rosterBtn.addEventListener("click", function () {
+      var f = els.rosterFile.files[0];
+      if (!f) { notice(els.rosterMsg, "აირჩიეთ ფაილი.", "warn"); return; }
+      var fd = new FormData();
+      fd.append("file", f);
+      els.rosterBtn.disabled = true;
+      notice(els.rosterMsg, "მიმდინარეობს ატვირთვა…", "warn");
+      fetch("/api/people/roster-import", { method: "POST", body: fd })
+        .then(function (r) {
+          if (r.status === 401) { window.location.href = "/login"; throw new Error("auth"); }
+          return r.json();
+        })
+        .then(function (rep) {
+          var parts = ["დაემატა: " + rep.added, "განახლდა: " + rep.updated,
+                       "შეცდომა: " + rep.invalid_count, "სულ ხაზი: " + rep.total_rows];
+          var html = parts.join(" • ");
+          if (rep.invalid && rep.invalid.length) {
+            html += "<br><small>" + rep.invalid.slice(0, 10).map(function (i) {
+              return i.row + ": " + esc(i.reason);
+            }).join("<br>") + "</small>";
+          }
+          notice(els.rosterMsg, html, rep.invalid_count > 0 ? "warn" : "ok");
+          els.rosterBtn.disabled = false;
+          els.rosterFile.value = "";
+          loadRosterStatus();
+        })
+        .catch(function () {
+          notice(els.rosterMsg, "ატვირთვა ვერ მოხერხდა.", "bad");
+          els.rosterBtn.disabled = false;
+        });
+    });
+  }
+
   // ----------------------------- import ----------------------------------- //
   els.importBtn.addEventListener("click", function () {
     var f = els.importFile.files[0];
@@ -690,6 +754,7 @@
     load();
     loadLimit();
     loadBackupStatus();
+    loadRosterStatus();
     startAutoRefresh();   // keep the list live as people tap at the kiosk
   });
 })();

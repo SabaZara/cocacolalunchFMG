@@ -56,16 +56,24 @@ def day(
     if window not in (None, 1, 2):
         raise HTTPException(status_code=422, detail="არასწორი კვების ფანჯარა.")
     rows, w1, w2 = R.day_detail(session, d, window)
+    resolve = R._identify(session)
+    out = []
+    for r in rows:
+        name, cc = resolve(r.card_id)
+        out.append({
+            "full_name": name,
+            "cc_code": cc,
+            "card_id": r.card_id,
+            "count": r.count,
+            "times": r.times,
+        })
     return {
         "date": d.isoformat(),
         "people": len(rows),                      # distinct people (in filter)
         "meals": sum(r.count for r in rows),      # meals shown (in filter)
         "w1": w1,                                 # whole-day window totals
         "w2": w2,
-        "rows": [
-            {"card_id": r.card_id, "count": r.count, "times": r.times}
-            for r in rows
-        ],
+        "rows": out,
     }
 
 
@@ -124,19 +132,24 @@ def export_detail(
     frm: str = Query(alias="from"),
     to: str = Query(alias="to"),
     format: str = Query(default="xlsx"),
+    # pos=0 drops the POS card id, leaving a sheet in Coca-Cola's own
+    # identifiers only — the version to hand to them.
+    pos: int = Query(default=1),
     session: Session = Depends(get_session),
 ) -> Response:
     f, t = _parse_date(frm, "from"), _parse_date(to, "to")
     _check_range(f, t)
     rows = R.detail_rows(session, f, t)
+    include_pos = bool(pos)
+    prefix = "detail" if include_pos else "detail_cc"
     if format == "csv":
-        body = R.detail_csv(rows)
+        body = R.detail_csv(rows, include_pos=include_pos)
         media = "text/csv; charset=utf-8"
-        fname = _filename("detail", f, t, "csv")
+        fname = _filename(prefix, f, t, "csv")
     else:
-        body = R.detail_xlsx(rows)
+        body = R.detail_xlsx(rows, include_pos=include_pos)
         media = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-        fname = _filename("detail", f, t, "xlsx")
+        fname = _filename(prefix, f, t, "xlsx")
     return Response(
         content=body,
         media_type=media,

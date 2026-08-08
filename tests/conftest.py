@@ -59,6 +59,10 @@ def app_ctx(monkeypatch):
     importlib.reload(tunnel_gate)
     import app.importer as importer
     importlib.reload(importer)
+    import app.cardcode as cardcode
+    importlib.reload(cardcode)
+    import app.roster as roster
+    importlib.reload(roster)
     import app.reports as reports
     importlib.reload(reports)
     import app.backup as backup
@@ -90,6 +94,7 @@ def app_ctx(monkeypatch):
             "db": db,
             "seed": seed,
             "importer": importer,
+            "roster": roster,
             "reports": reports,
             "backup": backup,
             "app_config": app_config,

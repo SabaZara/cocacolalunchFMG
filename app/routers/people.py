@@ -22,6 +22,7 @@ from ..config import get_settings
 from ..db import get_session
 from ..importer import import_cards
 from ..models import NAME_PLACEHOLDER, Person, Scan
+from ..roster import names_by_cc_code
 from ..scan_service import normalize_card_id
 from ..security import get_current_admin
 from ..timeutil import local_date_for, utc_now
@@ -38,8 +39,14 @@ class PersonOut(BaseModel):
     ate_today: bool        # True if ate_count > 0 (kept for compatibility)
     ate_count: int         # meals claimed today
     daily_limit: int       # the GLOBAL limit — same value for every card
-    # Present but hidden in the UI for now (kept so re-enabling is trivial).
+    # The name to SHOW: Coca-Cola's roster if this card is on it, otherwise
+    # whatever was typed by hand. Blank when neither exists.
     full_name: str
+    # This card's Coca-Cola code, derived from the POS id.
+    cc_code: str = ""
+    # True when the shown name came from the roster (so the UI can present it
+    # as authoritative rather than as an editable free-text value).
+    from_roster: bool = False
     department: str | None = None
 
 
@@ -70,7 +77,20 @@ def _ate_today_counts(session: Session) -> dict[int, int]:
     return {pid: int(n) for pid, n in rows}
 
 
-def _to_out(p: Person, ate_count: int) -> PersonOut:
+def _to_out(p: Person, ate_count: int, roster: dict[str, str] | None = None) -> PersonOut:
+    """Shape one card for the admin list.
+
+    `roster` is the whole {cc_code: name} map, passed in so listing 800 cards
+    is one query rather than one per row.
+    """
+    from ..cardcode import pos_to_cc
+
+    cc = pos_to_cc(p.card_id)
+    roster_name = (roster or {}).get(cc, "")
+    typed = (p.full_name or "").strip()
+    if typed == NAME_PLACEHOLDER:
+        typed = ""
+
     return PersonOut(
         id=p.id,
         card_id=p.card_id,
@@ -78,7 +98,10 @@ def _to_out(p: Person, ate_count: int) -> PersonOut:
         ate_today=ate_count > 0,
         ate_count=ate_count,
         daily_limit=AC.get_daily_limit(),   # global, not per-card
-        full_name=p.full_name,
+        # Coca-Cola's spelling wins; hand-typed is the fallback.
+        full_name=roster_name or typed,
+        cc_code=cc,
+        from_roster=bool(roster_name),
         department=p.department,
     )
 
@@ -95,7 +118,8 @@ def list_people(
     stmt = stmt.order_by(Person.card_id)
     people = session.exec(stmt).all()
     counts = _ate_today_counts(session)
-    return [_to_out(p, counts.get(p.id, 0)) for p in people]
+    roster = names_by_cc_code(session)
+    return [_to_out(p, counts.get(p.id, 0), roster) for p in people]
 
 
 @router.post("", response_model=PersonOut, status_code=201)
@@ -118,7 +142,7 @@ def create_person(
         session.rollback()
         raise HTTPException(status_code=409, detail=DUPLICATE_MSG)
     session.refresh(person)
-    return _to_out(person, 0)
+    return _to_out(person, 0, names_by_cc_code(session))
 
 
 @router.put("/{person_id}", response_model=PersonOut)
@@ -151,7 +175,7 @@ def update_person(
         raise HTTPException(status_code=409, detail=DUPLICATE_MSG)
     session.refresh(person)
     counts = _ate_today_counts(session)
-    return _to_out(person, counts.get(person.id, 0))
+    return _to_out(person, counts.get(person.id, 0), names_by_cc_code(session))
 
 
 class AteUpdate(BaseModel):
@@ -197,7 +221,7 @@ def set_ate_today(
 
     session.refresh(person)
     counts = _ate_today_counts(session)
-    return _to_out(person, counts.get(person.id, 0))
+    return _to_out(person, counts.get(person.id, 0), names_by_cc_code(session))
 
 
 @router.delete("/{person_id}")
@@ -222,6 +246,44 @@ async def import_people(
     data = await file.read()
     report = import_cards(session, file.filename or "", data)
     return report.as_dict()
+
+
+@router.post("/roster-import")
+async def import_roster_file(
+    file: UploadFile,
+    session: Session = Depends(get_session),
+) -> dict:
+    """Load Coca-Cola's personnel export (CardNo / FirstName / LastName).
+
+    Names then come from Coca-Cola's own records instead of being re-typed,
+    matched to each scan by converting the POS id to their DDD-DDDDD code.
+    Re-importing refreshes existing entries rather than duplicating them.
+    """
+    from ..roster import RosterFormatError, import_roster
+
+    data = await file.read()
+    try:
+        report = import_roster(session, file.filename or "", data)
+    except RosterFormatError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
+    except Exception:  # noqa: BLE001
+        raise HTTPException(
+            status_code=422,
+            detail="ფაილი ვერ წაიკითხა. დარწმუნდით, რომ ეს არის Coca-Cola-ს "
+                   "სია (.xls / .xlsx / .csv) სვეტებით CardNo და სახელი.",
+        )
+    return report.as_dict()
+
+
+@router.get("/roster-status")
+def roster_status(session: Session = Depends(get_session)) -> dict:
+    """How many people the roster holds — shown next to the upload control."""
+    from sqlalchemy import func as _f
+
+    from ..models import RosterEntry
+
+    count = session.exec(select(_f.count()).select_from(RosterEntry)).one()
+    return {"count": int(count)}
 
 
 # ----------------------------- bulk operations ----------------------------- #

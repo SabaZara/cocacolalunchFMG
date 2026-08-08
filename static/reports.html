@@ -52,6 +52,15 @@
         <button class="ghost small" id="detXlsx">დეტალები .xlsx</button>
         <button class="ghost small" id="detCsv">დეტალები .csv</button>
       </div>
+      <div class="row" style="margin-top:8px">
+        <span style="color:var(--muted)">მხოლოდ Coca-Cola კოდებით:</span>
+        <button class="ghost small" id="detXlsxCc">დეტალები .xlsx</button>
+        <button class="ghost small" id="detCsvCc">დეტალები .csv</button>
+      </div>
+      <div class="hint" style="margin-top:6px">
+        ზედა ღილაკები: სახელი + Coca-Cola კოდი + POS ბარათის ID.
+        ქვედა: POS ბარათის ID-ს გარეშე — Coca-Cola-სთვის გადასაცემად.
+      </div>
       <div id="rangeMsg"></div>
     </div>
 
@@ -64,38 +73,6 @@
       </table>
     </div>
 
-    <!-- Quantitative (marketing) report -->
-    <div class="card">
-      <h2><span class="h2-ico">📈</span> რაოდენობრივი რეპორტი
-        <span class="spacer" style="flex:1"></span>
-        <button class="ghost small" id="quantXlsx">ჩამოტვირთვა .xlsx</button>
-        <button class="ghost small" id="quantCsv">ჩამოტვირთვა .csv</button>
-      </h2>
-      <div class="row" style="margin-bottom:10px">
-        <span style="color:var(--muted)">გაყოფის დრო:</span>
-        <input id="mealSplit" type="time" class="ltr" style="width:130px" />
-        <button id="mealSplitSave" class="ghost small">შენახვა</button>
-        <span id="mealSplitMsg" class="hint"></span>
-      </div>
-      <div class="row" style="margin-bottom:10px">
-        <span id="quantPeriod" style="color:var(--muted)"></span>
-      </div>
-      <div class="table-wrap">
-        <table>
-          <thead>
-            <tr>
-              <th class="ltr">თარიღი</th>
-              <th id="quantH1">პირველი კვება</th>
-              <th id="quantH2">მეორე კვება</th>
-              <th>ჯამი</th>
-            </tr>
-          </thead>
-          <tbody id="quantBody"></tbody>
-          <tfoot id="quantFoot"></tfoot>
-        </table>
-      </div>
-    </div>
-
     <!-- Day detail -->
     <div class="card">
       <h2><span class="h2-ico">🍽</span> კონკრეტული დღე — ვინ ჭამა</h2>
@@ -104,14 +81,9 @@
         <button id="dayBtn" class="ghost">ჩვენება</button>
         <span id="dayCount" style="color:var(--muted)"></span>
       </div>
-      <div class="chips" id="dayWindowChips" style="margin-bottom:10px">
-        <button class="chip active" data-window="">ყველა</button>
-        <button class="chip" data-window="1">პირველი კვება</button>
-        <button class="chip" data-window="2">მეორე კვება</button>
-      </div>
       <div class="table-wrap">
         <table>
-          <thead><tr><th class="ltr">ბარათის ID</th><th>კვების რაოდენობა</th><th class="ltr">დროები</th></tr></thead>
+          <thead><tr><th>სახელი</th><th class="ltr">Coca-Cola კოდი</th><th class="ltr">ბარათის ID</th><th>კვების რაოდენობა</th><th class="ltr">დროები</th></tr></thead>
           <tbody id="dayBody"></tbody>
         </table>
       </div>

@@ -58,6 +58,26 @@ class Scan(SQLModel, table=True):
     local_date: date = Field(index=True, nullable=False)
 
 
+class RosterEntry(SQLModel, table=True):
+    """Coca-Cola personnel list: their card number -> that person's name.
+
+    Imported from Coca-Cola's own export, so names are spelled exactly as their
+    records spell them instead of being re-typed by hand. Keyed by the
+    Coca-Cola code (`DDD-DDDDD`) because that is the only identifier the two
+    systems share — our kiosk sees a POS id, which converts to this code
+    one-way (see cardcode.pos_to_cc).
+
+    Reference data only: it never decides whether somebody may eat.
+    """
+
+    __tablename__ = "roster"
+
+    id: int | None = Field(default=None, primary_key=True)
+    cc_code: str = Field(index=True, unique=True, nullable=False)
+    full_name: str = Field(nullable=False)
+    updated_at: datetime = Field(default_factory=utc_now)
+
+
 class Admin(SQLModel, table=True):
     __tablename__ = "admins"
 

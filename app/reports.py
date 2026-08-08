@@ -22,6 +22,8 @@ from .timeutil import local_date_for, local_time_str, to_local, utc_now
 
 # Georgian labels reused across reports/exports.
 L_CARD_ID = "ბარათის ID"
+L_NAME = "სახელი"
+L_CC_CODE = "Coca-Cola კოდი"
 L_STATUS = "სტატუსი"
 L_ATE = "ჭამა"
 L_NOT_ATE = "არ უჭამია"
@@ -160,19 +162,52 @@ def day_detail(session: Session, day: date, window: int | None = None) -> tuple[
     return rows, w1, w2
 
 
+def _identify(session: Session):
+    """Build a fast (card_id -> (name, cc_code)) resolver for a whole report.
+
+    Name resolution order:
+      1. the Coca-Cola roster, matched via the POS -> DDD-DDDDD conversion —
+         spelled exactly as Coca-Cola's own records spell it;
+      2. a name typed onto the card by hand in the admin page;
+      3. blank.
+    Roster wins because it is the authoritative source; a hand-typed name is a
+    stop-gap for somebody who is not on the official list.
+    """
+    from .cardcode import pos_to_cc
+    from .models import NAME_PLACEHOLDER
+    from .roster import names_by_cc_code
+
+    roster = names_by_cc_code(session)
+    typed: dict[str, str] = {}
+    for p in session.exec(select(Person)).all():
+        name = (p.full_name or "").strip()
+        if name and name != NAME_PLACEHOLDER:
+            typed[p.card_id] = name
+
+    def resolve(card_id: str) -> tuple[str, str]:
+        cc = pos_to_cc(card_id)
+        return roster.get(cc) or typed.get(card_id, ""), cc
+
+    return resolve
+
+
 def detail_rows(session: Session, frm: date, to: date) -> list[dict]:
-    """Flat detail rows for any range: date, card_id, REAL time, meal window."""
+    """Flat detail rows: date, name, Coca-Cola code, POS card id, REAL time."""
     scans = session.exec(
         select(Scan)
         .where(Scan.local_date >= frm, Scan.local_date <= to)
         .order_by(Scan.local_date, Scan.scanned_at)
     ).all()
+    resolve = _identify(session)
     out = []
     for s in scans:
         rl = _real_local(s.scanned_at)
         w = _window_of(rl)
+        name, cc = resolve(s.card_id)
         out.append({
             "date": s.local_date.isoformat(),
+            "full_name": name,
+            "cc_code": cc,
             "card_id": s.card_id,
             "time": rl.strftime("%H:%M:%S"),
             "window": L_MEAL1 if w == 1 else (L_MEAL2 if w == 2 else "—"),
@@ -312,12 +347,23 @@ def attendance(session: Session, frm: date, to: date) -> dict:
 
 
 # ------------------------------ CSV builders ------------------------------- #
-def detail_csv(rows: list[dict]) -> bytes:
+def detail_csv(rows: list[dict], include_pos: bool = True) -> bytes:
+    """Detail export: name, Coca-Cola code, [POS id], date, time.
+
+    `include_pos=False` drops the POS card id, giving a sheet that speaks only
+    Coca-Cola's own identifiers — the form to hand to them.
+    """
     buf = io.StringIO()
     w = csv.writer(buf)
-    w.writerow([L_DATE, L_CARD_ID, L_TIME, L_WINDOW])
+    header = [L_NAME, L_CC_CODE] + ([L_CARD_ID] if include_pos else []) \
+        + [L_DATE, L_TIME]
+    w.writerow(header)
     for r in rows:
-        w.writerow([r["date"], r["card_id"], r["time"], r.get("window", "")])
+        line = [r.get("full_name", ""), r.get("cc_code", "")]
+        if include_pos:
+            line.append(r["card_id"])
+        line += [r["date"], r["time"]]
+        w.writerow(line)
     # utf-8-sig so Excel opens Georgian correctly.
     return buf.getvalue().encode("utf-8-sig")
 
@@ -373,19 +419,40 @@ def _force_text(ws) -> None:  # noqa: ANN001
             cell.number_format = "@"
 
 
-def detail_xlsx(rows: list[dict]) -> bytes:
+def detail_xlsx(rows: list[dict], include_pos: bool = True) -> bytes:
+    """Detail export: name, Coca-Cola code, [POS id], date, time.
+
+    One row per meal, in the order people actually ate.
+    """
     wb = Workbook()
     ws = wb.active
     ws.title = "დეტალები"
-    ws.append([L_DATE, L_CARD_ID, L_TIME, L_WINDOW])
+    header = [L_NAME, L_CC_CODE] + ([L_CARD_ID] if include_pos else []) \
+        + [L_DATE, L_TIME]
+    ws.append(header)
     for r in rows:
-        ws.append([r["date"], str(r["card_id"]), r["time"], r.get("window", "")])
-    _style_header(ws, 4)
-    _autofit(ws, [14, 22, 12, 16])
-    # card_id is column 2 here; force it to text.
-    for row in ws.iter_rows(min_row=2, min_col=2, max_col=2):
+        line = [r.get("full_name", ""), r.get("cc_code", "")]
+        if include_pos:
+            line.append(str(r["card_id"]))
+        line += [r["date"], r["time"]]
+        ws.append(line)
+
+    _style_header(ws, len(header))
+    widths = [30, 16] + ([16] if include_pos else []) + [13, 11]
+    _autofit(ws, widths)
+
+    # Codes must stay TEXT: '077-03174' and long POS ids both get mangled by
+    # Excel's number guessing otherwise.
+    last_code_col = 3 if include_pos else 2
+    for row in ws.iter_rows(min_row=2, min_col=2, max_col=last_code_col):
         for cell in row:
             cell.number_format = "@"
+            cell.alignment = Alignment(horizontal="left")
+
+    # Keep the header visible when scrolling a long day, and let the operator
+    # sort/filter by name or date without setting it up each time.
+    ws.freeze_panes = "A2"
+    ws.auto_filter.ref = f"A1:{chr(ord('A') + len(header) - 1)}{ws.max_row}"
     out = io.BytesIO()
     wb.save(out)
     return out.getvalue()
