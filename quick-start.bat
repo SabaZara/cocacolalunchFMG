@@ -69,6 +69,7 @@ if "!DO_UPDATE!"=="1" (
 )
 
 REM --- stop any previous LUNCH background processes -------------------------
+REM First the PIDs we recorded...
 if exist "lunch-pids.txt" (
   for /f "tokens=1,2,*" %%a in (lunch-pids.txt) do (
     taskkill /PID %%b /T /F >nul 2>&1
@@ -76,11 +77,33 @@ if exist "lunch-pids.txt" (
   del /q "lunch-pids.txt" >nul 2>&1
 )
 
+REM --- clear the browser's HTTP cache (only when it is NOT running) --------
+REM The page is served no-store, but the on-disk cache still grows for months
+REM and a full disk stops SQLite writing (i.e. scans fail at the reader). A
+REM corrupted cache has also broken the scan page here before. Skipped
+REM automatically if a browser is open, so no profile can be damaged.
+if "!OPEN_BROWSER!"=="1" (
+  "%VENV_PY%" scripts\clear_browser_cache.py >nul 2>&1
+)
+
+REM ...then ANY ngrok still running, whether we recorded it or not.
+REM The free ngrok plan allows exactly ONE agent: if a stale one survives
+REM (hard power-off, crash, deleted pid file, recycled PID) the new one dies
+REM with ERR_NGROK_108 and remote access is lost completely. The pid file
+REM alone cannot be trusted, so kill by image name as well.
+taskkill /IM ngrok.exe /T /F >nul 2>&1
+
+REM Give the old agent a moment to drop its session server-side, otherwise
+REM the replacement can still be refused as a duplicate.
+"%VENV_PY%" -c "import time;time.sleep(2)" >nul 2>&1
+
 REM --- launch app + proxy (detached, hidden) -------------------------------
 "%VENV_PY%" scripts\start_hidden.py --label app --log app.log --pid-file lunch-pids.txt -- "%VENV_PY%" run.py
 "%VENV_PY%" scripts\start_hidden.py --label proxy --env PROXY_PORT=!PROXY_PORT! --log proxy.log --pid-file lunch-pids.txt -- "%VENV_PY%" tunnel_proxy.py
 
 REM --- launch tunnel if configured (detached, hidden) ----------------------
+REM Exactly one agent: everything above was killed first, and the free ngrok
+REM plan refuses a second one (ERR_NGROK_108) which would kill remote access.
 if exist "ngrok.exe" if not "!NGROK_AUTHTOKEN!"=="" if not "!NGROK_DOMAIN!"=="" (
   ".\ngrok.exe" config add-authtoken "!NGROK_AUTHTOKEN!" >nul 2>&1
   "%VENV_PY%" scripts\start_hidden.py --label tunnel --log tunnel.log --pid-file lunch-pids.txt -- ".\ngrok.exe" http --url !NGROK_DOMAIN! http://127.0.0.1:!PROXY_PORT!

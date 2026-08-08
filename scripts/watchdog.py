@@ -107,6 +107,89 @@ def psutil_boot() -> float:  # pragma: no cover - only used on POSIX
     return 0.0
 
 
+def _prune_logs(verbose: bool) -> None:
+    """Keep the app's own log files from growing without bound.
+
+    These are append-only and the kiosk runs for months, so app.log / proxy.log
+    / tunnel.log quietly become the biggest files on the machine. Trim each to
+    its newest ~2000 lines rather than deleting, so a recent crash is still
+    diagnosable.
+    """
+    LOG_MAX_BYTES = 5_000_000       # ~5 MB before trimming
+    LOG_KEEP_LINES = 2000
+    for name in ("app.log", "proxy.log", "tunnel.log", "update-rollback.log"):
+        p = ROOT / name
+        try:
+            if not p.exists() or p.stat().st_size <= LOG_MAX_BYTES:
+                continue
+            lines = p.read_text(encoding="utf-8", errors="ignore").splitlines()
+            p.write_text("\n".join(lines[-LOG_KEEP_LINES:]) + "\n", encoding="utf-8")
+            _log(f"[watchdog] trimmed {name} (was over 5 MB).", verbose)
+        except OSError:
+            pass
+
+
+def _free_disk_mb() -> float:
+    """Free space on the drive holding the install. -1 if unknown."""
+    try:
+        import shutil as _sh
+        return _sh.disk_usage(str(ROOT)).free / (1024 * 1024)
+    except Exception:  # noqa: BLE001
+        return -1.0
+
+
+def _check_disk(verbose: bool) -> None:
+    """Warn loudly in the log when the disk is nearly full.
+
+    SQLite cannot write when the disk fills, so scans would start failing at
+    the reader. Browser caches and Windows updates are the usual culprits on a
+    small kiosk laptop, and nobody is watching the machine day to day.
+    """
+    free = _free_disk_mb()
+    if free < 0:
+        return
+    if free < 500:
+        _log(f"[watchdog] WARNING: only {free:.0f} MB free — the database may "
+             f"stop accepting scans. Clear browser cache / temp files.", True)
+    elif free < 1500:
+        _log(f"[watchdog] note: {free:.0f} MB free on the kiosk drive.", verbose)
+
+
+def _ngrok_agent_count() -> int:
+    """How many ngrok agents are running locally.
+
+    The free plan allows exactly ONE. Two agents means the newer one is being
+    refused (ERR_NGROK_108) and remote access is broken, so this is worth
+    detecting rather than silently living with a dead tunnel.
+    Returns -1 when it cannot be determined.
+    """
+    try:
+        if os.name == "nt":
+            out = subprocess.run(
+                ["tasklist", "/FI", "IMAGENAME eq ngrok.exe", "/NH"],
+                capture_output=True, text=True, timeout=15,
+            ).stdout
+            return sum(1 for line in out.splitlines() if "ngrok.exe" in line.lower())
+        out = subprocess.run(["pgrep", "-f", "ngrok"],
+                             capture_output=True, text=True, timeout=15).stdout
+        return len([line for line in out.splitlines() if line.strip()])
+    except (OSError, subprocess.SubprocessError):
+        return -1
+
+
+def _kill_stray_ngrok(verbose: bool) -> None:
+    """Leave at most zero agents running, so the next start gets the slot."""
+    try:
+        if os.name == "nt":
+            subprocess.run(["taskkill", "/IM", "ngrok.exe", "/T", "/F"],
+                           capture_output=True, timeout=20)
+        else:
+            subprocess.run(["pkill", "-f", "ngrok"], capture_output=True, timeout=20)
+        _log("[watchdog] cleared stray ngrok agent(s).", verbose)
+    except (OSError, subprocess.SubprocessError):
+        pass
+
+
 def _relaunch(verbose: bool) -> bool:
     """Run quick-start.bat (Windows) to bring app + proxy + tunnel back."""
     starter = ROOT / "quick-start.bat"
@@ -156,7 +239,23 @@ def main(argv: list[str] | None = None) -> int:
 
     port = _port()
 
+    # Housekeeping every pass: cheap, and it is the only thing that runs
+    # regularly on an unattended kiosk.
+    _prune_logs(verbose)
+    _check_disk(verbose)
+
     if _healthy(port):
+        # The app is fine — but a duplicate ngrok agent still breaks remote
+        # access on the free plan, and nothing else would ever notice.
+        agents = _ngrok_agent_count()
+        if agents > 1:
+            _log(f"[watchdog] {agents} ngrok agents running — the free plan "
+                 f"allows ONE, so the extra ones are being refused "
+                 f"(ERR_NGROK_108). Clearing and restarting the tunnel.", verbose)
+            _kill_stray_ngrok(verbose)
+            time.sleep(2)
+            _relaunch(verbose)   # /nobrowser /noupdate: brings the tunnel back
+            return 0
         _log(f"[watchdog] app healthy on port {port}.", verbose)
         return 0
 
@@ -169,6 +268,9 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     _log(f"[watchdog] app NOT responding on port {port} — relaunching…", verbose)
+    # quick-start starts a fresh tunnel; a survivor from the dead instance
+    # would take the single free-plan slot and refuse the new one.
+    _kill_stray_ngrok(verbose)
     if not _relaunch(verbose):
         return 1
 

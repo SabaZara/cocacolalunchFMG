@@ -32,25 +32,48 @@ def _settings():
     return get_settings()
 
 
-def _kill_old() -> None:
-    if not PIDS.exists():
-        return
-    for line in PIDS.read_text(encoding="utf-8", errors="ignore").splitlines():
-        parts = line.split()
-        if len(parts) >= 2 and parts[1].isdigit():
-            pid = int(parts[1])
-            try:
-                if os.name == "nt":
-                    subprocess.run(["taskkill", "/PID", str(pid), "/T", "/F"],
-                                   capture_output=True)
-                else:
-                    os.kill(pid, signal.SIGTERM)
-            except (ProcessLookupError, OSError):
-                pass
+def _kill_stray_ngrok() -> None:
+    """Kill ANY ngrok agent, recorded or not.
+
+    The free ngrok plan permits exactly ONE agent per account. A survivor from
+    a crash, a hard power-off, or a deleted/stale pid file makes the new agent
+    fail with ERR_NGROK_108 — and remote access is then gone entirely, which
+    cannot be fixed remotely. The pid file is not trustworthy on its own, so
+    sweep by process name too.
+    """
     try:
-        PIDS.unlink()
+        if os.name == "nt":
+            subprocess.run(["taskkill", "/IM", "ngrok.exe", "/T", "/F"],
+                           capture_output=True)
+        else:
+            subprocess.run(["pkill", "-f", "ngrok"], capture_output=True)
     except OSError:
         pass
+
+
+def _kill_old() -> None:
+    if PIDS.exists():
+        for line in PIDS.read_text(encoding="utf-8", errors="ignore").splitlines():
+            parts = line.split()
+            if len(parts) >= 2 and parts[1].isdigit():
+                pid = int(parts[1])
+                try:
+                    if os.name == "nt":
+                        subprocess.run(["taskkill", "/PID", str(pid), "/T", "/F"],
+                                       capture_output=True)
+                    else:
+                        os.kill(pid, signal.SIGTERM)
+                except (ProcessLookupError, OSError):
+                    pass
+        try:
+            PIDS.unlink()
+        except OSError:
+            pass
+
+    # Always sweep ngrok, even when the pid file was missing or incomplete.
+    _kill_stray_ngrok()
+    # Let the old agent's session drop server-side before starting a new one.
+    time.sleep(2)
 
 
 def _spawn(label: str, cmd: list[str], env: dict | None = None) -> None:

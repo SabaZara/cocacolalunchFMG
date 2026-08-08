@@ -303,6 +303,39 @@ visit: if a remote update (or a crash, or a bad shutdown) leaves the app dead,
 nothing inside the app can revive it — the app *is* what died. The watchdog runs
 outside it and brings it back within ~5 minutes. It writes `watchdog.log`.
 
+> **Only ONE ngrok agent may run at a time.** The free plan allows a single
+> agent per account: start a second and it is refused with `ERR_NGROK_108`, and
+> **remote access stops working entirely** — you cannot reach `/admin` to fix
+> it. Every start path therefore kills any surviving `ngrok.exe` (by name, not
+> just by recorded PID, since a hard power-off leaves a stale pid file behind)
+> and waits ~2s for the old session to drop before starting the new one. The
+> watchdog also counts agents on every pass and clears duplicates it finds —
+> the app can look perfectly healthy while the tunnel is dead, so nothing else
+> would ever notice.
+>
+> Practical consequence: **do not run `start.bat` and `quick-start.bat` at the
+> same time**, and do not leave a manually started `ngrok.exe` running. If
+> remote access ever stops while the kiosk screen still works, that is almost
+> always this — the watchdog will clear it within ~5 minutes on its own.
+
+### Disk & cache housekeeping (automatic)
+
+A kiosk laptop runs unattended for months, and a **full disk stops SQLite from
+writing — scans fail at the reader**. Two things run by themselves to prevent it:
+
+* **At logon**, before the kiosk page opens, the browser's HTTP cache is
+  cleared (Chrome/Edge/Brave). Only cache folders are removed — history,
+  bookmarks, cookies and saved logins are never touched — and it is **skipped
+  entirely while a browser is open**, since deleting a live cache corrupts the
+  profile. This also guards against a *corrupted* cache breaking the scan page,
+  which has happened here before.
+* **Every watchdog pass**, `app.log` / `proxy.log` / `tunnel.log` are trimmed
+  to their newest 2000 lines once they pass 5 MB, and free disk space is
+  checked. Under 500 MB free, a warning is written to `watchdog.log`.
+
+The kiosk page itself is always served `Cache-Control: no-store`, so the browser
+can never show a stale copy of the scan screen regardless.
+
 To undo all of this, run **`uninstall-autostart.bat`**. Your data and settings
 are untouched; you just go back to starting the kiosk by hand.
 

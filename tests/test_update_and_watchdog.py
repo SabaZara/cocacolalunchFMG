@@ -240,6 +240,70 @@ def test_watchdog_relaunch_never_opens_a_browser_tab(tmp_path, monkeypatch):
     assert "/noupdate" in cmd, f"watchdog would stall on a download: {cmd}"
 
 
+def test_watchdog_clears_duplicate_ngrok_agents(tmp_path, monkeypatch):
+    """Two ngrok agents on the free plan = no remote access at all.
+
+    The plan allows ONE agent; a second is refused with ERR_NGROK_108, so a
+    survivor from a crash silently breaks the tunnel while the app itself
+    looks perfectly healthy. Nothing else in the system would notice.
+    """
+    root = tmp_path / "install"
+    root.mkdir()
+    (root / ".env").write_text("PORT=8000\n")
+    wd = _load_watchdog(monkeypatch, root)
+
+    monkeypatch.setattr(wd, "_healthy", lambda port, timeout=3.0: True)
+    monkeypatch.setattr(wd, "_ngrok_agent_count", lambda: 2)
+    killed = {"n": 0}
+    relaunched = {"n": 0}
+    monkeypatch.setattr(wd, "_kill_stray_ngrok",
+                        lambda v: killed.__setitem__("n", killed["n"] + 1))
+    monkeypatch.setattr(wd, "_relaunch",
+                        lambda v: relaunched.__setitem__("n", relaunched["n"] + 1) or True)
+    monkeypatch.setattr(wd.time, "sleep", lambda s: None)
+
+    assert wd.main([]) == 0
+    assert killed["n"] == 1, "duplicate agents were not cleared"
+    assert relaunched["n"] == 1, "tunnel was not restarted after clearing"
+
+
+def test_watchdog_leaves_a_single_ngrok_agent_alone(tmp_path, monkeypatch):
+    """One agent is the correct state — do not restart a working tunnel."""
+    root = tmp_path / "install"
+    root.mkdir()
+    (root / ".env").write_text("PORT=8000\n")
+    wd = _load_watchdog(monkeypatch, root)
+
+    monkeypatch.setattr(wd, "_healthy", lambda port, timeout=3.0: True)
+    monkeypatch.setattr(wd, "_ngrok_agent_count", lambda: 1)
+    killed = {"n": 0}
+    monkeypatch.setattr(wd, "_kill_stray_ngrok",
+                        lambda v: killed.__setitem__("n", killed["n"] + 1))
+    monkeypatch.setattr(wd, "_relaunch", lambda v: True)
+
+    assert wd.main([]) == 0
+    assert killed["n"] == 0, "a healthy single tunnel must not be disturbed"
+
+
+def test_watchdog_clears_ngrok_before_reviving_a_dead_app(tmp_path, monkeypatch):
+    """A survivor from the dead instance would hold the single free slot."""
+    root = tmp_path / "install"
+    root.mkdir()
+    (root / ".env").write_text("PORT=8000\n")
+    wd = _load_watchdog(monkeypatch, root)
+
+    monkeypatch.setattr(wd, "_healthy", lambda port, timeout=3.0: False)
+    monkeypatch.setattr(wd, "_uptime_seconds", lambda: 10_000.0)
+    order = []
+    monkeypatch.setattr(wd, "_kill_stray_ngrok", lambda v: order.append("kill"))
+    monkeypatch.setattr(wd, "_relaunch",
+                        lambda v: order.append("relaunch") or True)
+    monkeypatch.setattr(wd, "_wait_healthy", lambda port, seconds: True)
+
+    assert wd.main([]) == 0
+    assert order == ["kill", "relaunch"], f"wrong order: {order}"
+
+
 def test_watchdog_reads_port_from_env_file(tmp_path, monkeypatch):
     """The port must come from .env without importing the (possibly broken) app."""
     root = tmp_path / "install"
