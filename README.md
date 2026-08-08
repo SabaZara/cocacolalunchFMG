@@ -318,6 +318,25 @@ outside it and brings it back within ~5 minutes. It writes `watchdog.log`.
 > remote access ever stops while the kiosk screen still works, that is almost
 > always this — the watchdog will clear it within ~5 minutes on its own.
 
+### Desktop shortcuts (manual start / stop)
+
+`install-autostart.bat` also puts three shortcuts on the Desktop (or run
+**`install-shortcuts.bat`** on its own):
+
+| Shortcut | What it does |
+|---|---|
+| **LUNCH - Start** | starts app + tunnel and opens the kiosk screen |
+| **LUNCH - Stop** | stops everything — *the scan screen stops working* |
+| **LUNCH - Fix** | diagnoses and repairs a kiosk that will not start |
+
+You normally need none of them, since the kiosk starts itself at logon. They
+are for ending the day deliberately, or for restarting by hand.
+
+> **Stop does not disable autostart.** Turning the laptop on again — or the
+> 5-minute watchdog — brings the kiosk back. That is intentional: it is what
+> stops a crash from taking the canteen offline. To stop it starting by itself
+> at all, run `uninstall-autostart.bat`.
+
 ### Disk & cache housekeeping (automatic)
 
 A kiosk laptop runs unattended for months, and a **full disk stops SQLite from

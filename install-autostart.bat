@@ -69,6 +69,14 @@ if errorlevel 1 (
   echo   [OK] LunchKioskWatchdog  -- revives the app if it ever stops
 )
 
+REM --- 3) desktop shortcuts for manual start/stop --------------------------
+if exist "%PROJ%\install-shortcuts.bat" (
+  echo.
+  echo Creating desktop shortcuts...
+  call "%PROJ%\install-shortcuts.bat" /quiet >nul 2>&1
+  echo   [OK] LUNCH - Start / Stop / Fix on the Desktop
+)
+
 echo.
 echo Done. Checking the watchdog once now (it will NOT open a browser tab)...
 "%VENV_PY%" "%PROJ%\scripts\watchdog.py" --verbose
