@@ -27,6 +27,27 @@ VENV_PY = ROOT / (".venv/Scripts/python.exe" if os.name == "nt" else ".venv/bin/
 PYEXE = str(VENV_PY) if VENV_PY.exists() else sys.executable
 
 
+def _port_from_env(default: int = 8000) -> int:
+    """Read PORT straight from .env, WITHOUT importing app code.
+
+    Importing the app here is how a restart could die before starting
+    anything: if the freshly-updated code has an import error, _settings()
+    raises, this script exits, and nothing is ever launched — the app stays
+    down with no rollback attempted. Parsing the file cannot fail that way.
+    """
+    try:
+        for raw in (ROOT / ".env").read_text(encoding="utf-8").splitlines():
+            raw = raw.strip()
+            if raw.startswith("#") or "=" not in raw:
+                continue
+            key, _, value = raw.partition("=")
+            if key.strip() == "PORT":
+                return int(value.strip())
+    except (OSError, ValueError):
+        pass
+    return default
+
+
 def _settings():
     from app.config import get_settings
     return get_settings()
@@ -119,8 +140,11 @@ def main() -> int:
     _kill_old()
     time.sleep(1)
 
-    s = _settings()
-    proxy_port = s.port + 1
+    # NOTE: never import app code here. If the update we just applied has a
+    # syntax/import error, importing it would kill this script and nothing
+    # would be started OR rolled back — the kiosk would simply stay dead.
+    app_port = _port_from_env()
+    proxy_port = app_port + 1
 
     # app
     _spawn("app", [PYEXE, str(ROOT / "run.py")])
@@ -166,7 +190,7 @@ def main() -> int:
     # If the (possibly just-updated) app does not become healthy, restore the
     # pre-update code from .rollback/ and relaunch it, so a bad update can
     # never strand the kiosk.
-    if _healthy(s.port, seconds=30):
+    if _healthy(app_port, seconds=30):
         _log("[self_restart] app healthy.")
         return 0
 
@@ -203,7 +227,7 @@ def main() -> int:
         _spawn("tunnel", [str(ngrok), "http", "--url", domain,
                           f"http://127.0.0.1:{proxy_port}"])
 
-    if _healthy(s.port, seconds=30):
+    if _healthy(app_port, seconds=30):
         _log("[self_restart] ROLLED BACK successfully — previous version is running.")
         return 0
     _log("[self_restart] rollback relaunch still unhealthy — manual attention needed.")
