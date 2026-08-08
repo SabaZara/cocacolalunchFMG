@@ -25,6 +25,7 @@ from __future__ import annotations
 import http.client
 import os
 import sys
+import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 from app.config import get_settings
@@ -65,15 +66,42 @@ class ProxyHandler(BaseHTTPRequestHandler):
         # Tell the app it's effectively HTTPS (so cookies are marked Secure).
         out_headers.setdefault("X-Forwarded-Proto", "https")
 
-        # Generous timeout: large .xlsx/CSV exports can take a few seconds.
-        conn = http.client.HTTPConnection(APP_HOST, APP_PORT, timeout=120)
-        try:
-            conn.request(method, self.path, body=body, headers=out_headers)
-            resp = conn.getresponse()
-            data = resp.read()
-        except Exception as exc:  # noqa: BLE001  (upstream/app unreachable)
-            self._safe_error(502, f"upstream error: {exc}")
-            conn.close()
+        # Retry briefly instead of failing the page outright. The app is
+        # momentarily absent during a restart (remote update, watchdog revive),
+        # and a browser tab that has been idle in the background will otherwise
+        # show a raw "502 WinError 10061" the instant the operator returns to
+        # it. A few short retries cover that window invisibly.
+        UPSTREAM_TRIES = 4
+        RETRY_DELAY = 0.75
+        resp = data = None
+        last_exc: Exception | None = None
+        for attempt in range(UPSTREAM_TRIES):
+            conn = None
+            try:
+                # Generous timeout: large .xlsx/CSV exports take a few seconds.
+                # Constructed INSIDE the try so a failure here is retried too
+                # rather than escaping as an unhandled traceback.
+                conn = http.client.HTTPConnection(APP_HOST, APP_PORT, timeout=120)
+                conn.request(method, self.path, body=body, headers=out_headers)
+                resp = conn.getresponse()
+                data = resp.read()
+                break
+            except Exception as exc:  # noqa: BLE001  (upstream/app unreachable)
+                last_exc = exc
+                if conn is not None:
+                    try:
+                        conn.close()
+                    except Exception:  # noqa: BLE001
+                        pass
+                # Only idempotent requests are safe to replay; a POST could be
+                # applied twice. Never retry one with a body.
+                if body or method not in ("GET", "HEAD"):
+                    break
+                if attempt < UPSTREAM_TRIES - 1:
+                    time.sleep(RETRY_DELAY)
+
+        if resp is None:
+            self._unavailable(last_exc)
             return
 
         try:
@@ -92,7 +120,51 @@ class ProxyHandler(BaseHTTPRequestHandler):
             # tunnel hiccups. Drop quietly instead of dumping a traceback.
             pass
         finally:
-            conn.close()
+            if conn is not None:
+                try:
+                    conn.close()
+                except Exception:  # noqa: BLE001
+                    pass
+
+    def _unavailable(self, exc: Exception | None) -> None:
+        """Serve a self-refreshing "starting up" page instead of a raw 502.
+
+        The app being briefly absent is a normal, self-healing state here (an
+        update restart, or the watchdog reviving it). The stock error page
+        showed the operator a Python-level "WinError 10061" and left them to
+        refresh by hand; this waits and reloads itself, so the page comes back
+        on its own once the app is listening again.
+        """
+        page = (
+            "<!doctype html><html lang='ka'><head><meta charset='utf-8'>"
+            "<meta name='viewport' content='width=device-width,initial-scale=1'>"
+            "<meta http-equiv='refresh' content='5'>"
+            "<title>იტვირთება…</title><style>"
+            "body{font-family:system-ui,'Segoe UI',sans-serif;background:#0f1720;"
+            "color:#e8eef7;display:flex;align-items:center;justify-content:center;"
+            "height:100vh;margin:0;text-align:center;padding:24px}"
+            ".b{max-width:520px}h1{font-size:22px;margin:0 0 12px}"
+            "p{opacity:.75;line-height:1.6;margin:6px 0}"
+            ".s{margin-top:18px;font-size:13px;opacity:.5}"
+            "</style></head><body><div class='b'>"
+            "<h1>აპლიკაცია იტვირთება…</h1>"
+            "<p>გვერდი თავისით განახლდება რამდენიმე წამში.</p>"
+            "<p>თუ 5 წუთში არ ჩაიტვირთა, გადატვირთეთ ლეპტოპი.</p>"
+            "<p class='s'>სკანირება ლოკალურად მუშაობს დამოუკიდებლად.</p>"
+            "</div></body></html>"
+        ).encode("utf-8")
+        try:
+            # 503 + Retry-After is the honest status: temporarily unavailable,
+            # not a permanent gateway failure.
+            self.send_response(503)
+            self.send_header("Content-Type", "text/html; charset=utf-8")
+            self.send_header("Content-Length", str(len(page)))
+            self.send_header("Retry-After", "5")
+            self.send_header("Cache-Control", "no-store")
+            self.end_headers()
+            self.wfile.write(page)
+        except (ConnectionError, OSError):
+            pass
 
     def _safe_error(self, code: int, message: str) -> None:
         try:
