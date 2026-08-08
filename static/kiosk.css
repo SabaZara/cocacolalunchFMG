@@ -49,19 +49,42 @@ html, body {
 .state-allowed { background: var(--allowed-bg); color: var(--fg-on-color); }
 .state-denied  { background: var(--denied-bg);  color: var(--fg-on-color); }
 
+/* Sizing keys off BOTH dimensions. Using vw alone made the text huge on a
+   small laptop: a wide-but-short screen got width-sized text with no room for
+   it, and "დაადეთ ბარათი" wraps to two lines. vmin follows the SHORTER side,
+   so the headline stays big on the kiosk TV and sane on a 1366x768 laptop. */
 .big {
-  font-size: clamp(48px, 14vw, 220px);
+  font-size: clamp(40px, 11vmin + 2vw, 180px);
   font-weight: 800;
   line-height: 1.05;
   letter-spacing: 0.5px;
+  /* Never let a long word push past the edge. */
+  max-width: 100%;
+  overflow-wrap: break-word;
 }
 
 .sub {
-  margin-top: 3vh;
-  font-size: clamp(20px, 4vw, 56px);
+  margin-top: 2.5vh;
+  font-size: clamp(16px, 3vmin + 0.8vw, 40px);
   font-weight: 600;
   opacity: 0.95;
   min-height: 1.2em;
+  max-width: 100%;
+  overflow-wrap: break-word;
+}
+
+/* Short screens (most laptops): trim further so the headline plus the time
+   line never crowd the viewport, even when the headline wraps. */
+@media (max-height: 820px) {
+  .big { font-size: clamp(36px, 9vmin + 1.5vw, 120px); }
+  .sub { font-size: clamp(15px, 2.4vmin + 0.7vw, 30px); }
+}
+
+/* Very short (netbooks, half-height windows) — keep it readable but compact. */
+@media (max-height: 560px) {
+  .big { font-size: clamp(30px, 8vmin + 1vw, 78px); }
+  .sub { font-size: clamp(14px, 2vmin + 0.6vw, 22px); }
+  #screen { padding: 2vh 3vw; }
 }
 
 /* Brief flash animation when a result appears. */

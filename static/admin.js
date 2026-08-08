@@ -177,7 +177,7 @@
   function load() {
     // Always fetch the FULL list; search + filter are applied client-side
     // (instant, and stats always reflect the whole list).
-    api("GET", "/api/people").then(function (res) {
+    return api("GET", "/api/people").then(function (res) {
       shown = res.j || [];
       var present = {};
       shown.forEach(function (p) { present[p.id] = true; });
@@ -186,6 +186,40 @@
       updateStats(shown);
     });
   }
+
+  // ------------------------- live auto-refresh ---------------------------- //
+  // Cards register themselves when people tap at the kiosk, so a list loaded
+  // once goes stale within seconds. Poll so the page reflects reality without
+  // anyone pressing F5 — but never redraw while the operator is mid-action,
+  // because re-rendering the table would fight what they are doing.
+  var AUTO_REFRESH_MS = 5000;
+  var autoRefreshTimer = null;
+
+  function busyEditing() {
+    // A checked row / open bulk bar means a multi-step action is in progress.
+    if (selectedIds().length > 0) return true;
+    var a = document.activeElement;
+    if (!a) return false;
+    // Typing in any field (search, limit, add-card, backup config...).
+    var tag = (a.tagName || "").toLowerCase();
+    return tag === "input" || tag === "textarea" || tag === "select";
+  }
+
+  function autoRefresh() {
+    if (document.hidden) return;      // tab not visible: don't poll
+    if (busyEditing()) return;        // don't yank the table mid-edit
+    load();
+  }
+
+  function startAutoRefresh() {
+    if (autoRefreshTimer) clearInterval(autoRefreshTimer);
+    autoRefreshTimer = setInterval(autoRefresh, AUTO_REFRESH_MS);
+  }
+
+  // Refresh straight away when the operator comes back to the tab.
+  document.addEventListener("visibilitychange", function () {
+    if (!document.hidden) autoRefresh();
+  });
 
   // ----------------------------- selection -------------------------------- //
   function selectedIds() { return Object.keys(selected).map(Number); }
@@ -581,5 +615,6 @@
     load();
     loadLimit();
     loadBackupStatus();
+    startAutoRefresh();   // keep the list live as people tap at the kiosk
   });
 })();
