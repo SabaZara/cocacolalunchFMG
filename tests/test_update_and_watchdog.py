@@ -29,6 +29,10 @@ def _fake_repo_zip(tmp_path: Path) -> bytes:
         zf.writestr(f"{top}/tests/conftest.py", "# test config\n")
         zf.writestr(f"{top}/run.py", "# runner\n")
         zf.writestr(f"{top}/requirements.txt", "fastapi\n")
+        zf.writestr(f"{top}/start.bat", "@echo off\n")
+        # A .bat added AFTER the kiosk was installed — the case that broke.
+        zf.writestr(f"{top}/install-autostart.bat", "@echo autostart\n")
+        zf.writestr(f"{top}/brand-new-tool.bat", "@echo new\n")
     return buf.getvalue()
 
 
@@ -82,6 +86,32 @@ def test_update_preserves_local_data_and_secrets(tmp_path, monkeypatch):
     assert (root / ".app-config.json").read_text() == '{"daily_limit": 4}'
     # ...and the new code did land
     assert '9.9.9' in (root / "app" / "__init__.py").read_text()
+
+
+def test_update_delivers_newly_added_bat_files(tmp_path, monkeypatch):
+    """A .bat added to the repo later must actually reach the kiosk.
+
+    COPY_FILES was a hardcoded list, so a newly shipped script silently never
+    got copied: the operator was told to run install-autostart.bat and did not
+    have the file. Any *.bat in the repo is picked up now.
+    """
+    root = tmp_path / "install"
+    for d in ("app", "static", "scripts", "tests"):
+        (root / d).mkdir(parents=True)
+    (root / "app" / "__init__.py").write_text('__version__ = "1.0.0"\n')
+    (root / "start.bat").write_text("@echo old\n")
+    # The kiosk does NOT have these yet — they were added after it was set up.
+    assert not (root / "install-autostart.bat").exists()
+    assert not (root / "brand-new-tool.bat").exists()
+
+    au = _install_apply_update(monkeypatch, root, _fake_repo_zip(tmp_path))
+    assert au.main() == 0
+
+    assert (root / "install-autostart.bat").exists(), "new .bat never delivered"
+    assert (root / "brand-new-tool.bat").exists(), "unlisted .bat never delivered"
+    assert "autostart" in (root / "install-autostart.bat").read_text()
+    # existing scripts still updated
+    assert "@echo off" in (root / "start.bat").read_text()
 
 
 def test_update_snapshots_rollback_before_overwriting(tmp_path, monkeypatch):

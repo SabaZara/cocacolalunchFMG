@@ -41,7 +41,14 @@ COPY_FILES = [
     "run.py", "tunnel_proxy.py", "requirements.txt", "README.md", ".env.example",
     "start.bat", "quick-start.bat", "kiosk.bat", "kiosk-test.bat",
     "stop.bat", "diagnose.bat", "update.bat",
+    "install-autostart.bat", "uninstall-autostart.bat",
 ]
+
+# Any OTHER top-level .bat shipped in the repo is copied too. This list used to
+# be the only source of truth, so a newly added .bat silently never reached the
+# kiosk — you could not run a script you did not have. Anything matching these
+# patterns is picked up automatically from now on.
+COPY_GLOBS = ["*.bat"]
 
 # Never overwrite / never delete these (local data + secrets + binaries).
 PRESERVE = {
@@ -80,6 +87,20 @@ def _download(url: str) -> bytes:
     raise RuntimeError(f"download failed: {last}")
 
 
+def _top_level_files(base: Path) -> list[str]:
+    """Top-level files to copy: the explicit list plus anything matching
+    COPY_GLOBS that `base` actually contains (de-duplicated, stable order)."""
+    names = list(COPY_FILES)
+    seen = set(names)
+    if base.exists():
+        for pattern in COPY_GLOBS:
+            for item in sorted(base.glob(pattern)):
+                if item.is_file() and item.name not in seen:
+                    seen.add(item.name)
+                    names.append(item.name)
+    return names
+
+
 def _copy_tree(src: Path, dst: Path) -> int:
     """Copy src dir onto dst dir (overwrite files); returns files copied."""
     count = 0
@@ -115,7 +136,7 @@ def snapshot_current(root: Path | None = None) -> Path:
         (dest / "tests").mkdir(exist_ok=True)
         for item in (base / "tests").glob("*.py"):
             shutil.copy2(item, dest / "tests" / item.name)
-    for f in COPY_FILES:
+    for f in _top_level_files(base):
         src = base / f
         if src.exists():
             shutil.copy2(src, dest / f)
@@ -177,8 +198,8 @@ def main() -> int:
         for item in (extracted / "tests").glob("*.py"):
             shutil.copy2(item, ROOT / "tests" / item.name)
             copied += 1
-    # individual files
-    for f in COPY_FILES:
+    # individual files (explicit list + any *.bat the repo ships)
+    for f in _top_level_files(extracted):
         src = extracted / f
         if src.exists() and f not in PRESERVE:
             shutil.copy2(src, ROOT / f)
