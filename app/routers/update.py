@@ -67,7 +67,25 @@ def run_update(restart: bool = True) -> dict:
     if not ok:
         return result
 
-    # 2) schedule the detached self-restart (so this response can flush first)
+    # 2) apply any schema the NEW code expects, in a separate process so it
+    #    imports the just-downloaded models rather than the ones this process
+    #    loaded at boot. Without this an update that adds a table needed a
+    #    restart: the new page would come up empty because its table did not
+    #    exist yet. Only ever adds; safe while the kiosk keeps scanning.
+    try:
+        mig = subprocess.run(
+            [py, str(ROOT / "scripts" / "migrate_db.py")],
+            cwd=str(ROOT), capture_output=True, text=True, timeout=120,
+        )
+        result["migrated"] = mig.returncode == 0
+        result["migrate_output"] = ((mig.stdout or "") + (mig.stderr or "")).strip()
+    except Exception as exc:  # noqa: BLE001
+        # A migration failure must not lose the code we just applied; the
+        # restart path (or the next startup) will run init_db anyway.
+        result["migrated"] = False
+        result["migrate_output"] = f"migration skipped: {exc}"
+
+    # 3) schedule the detached self-restart (so this response can flush first)
     if restart:
         creationflags = 0
         start_new_session = False

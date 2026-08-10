@@ -318,3 +318,94 @@ def test_watchdog_port_falls_back_when_env_unreadable(tmp_path, monkeypatch):
     root.mkdir()   # no .env at all
     wd = _load_watchdog(monkeypatch, root)
     assert wd._port() == 8000
+
+
+# --------------------- schema migration without a restart ------------------- #
+def test_migration_adds_new_tables_to_an_old_database(tmp_path, monkeypatch):
+    """An update that adds a table must not need a restart.
+
+    init_db() only runs at startup, so "update without restart" used to leave
+    the new code on disk with no table to write to — the feature came up empty
+    until somebody restarted. scripts/migrate_db.py closes that gap.
+    """
+    import sqlite3
+    import subprocess
+
+    db = tmp_path / "lunch.db"
+    con = sqlite3.connect(db)
+    con.executescript(
+        """
+        CREATE TABLE people (id INTEGER PRIMARY KEY, card_id VARCHAR UNIQUE NOT NULL,
+          full_name VARCHAR, department VARCHAR, active BOOLEAN,
+          daily_limit INTEGER NOT NULL DEFAULT 1, created_at DATETIME);
+        CREATE TABLE scans (id INTEGER PRIMARY KEY,
+          person_id INTEGER NOT NULL REFERENCES people(id), card_id VARCHAR NOT NULL,
+          scanned_at DATETIME NOT NULL, local_date DATE NOT NULL);
+        CREATE TABLE admins (id INTEGER PRIMARY KEY, username VARCHAR UNIQUE NOT NULL,
+          password_hash VARCHAR NOT NULL);
+        INSERT INTO people (card_id, full_name, active, daily_limit)
+          VALUES ('3377269862','----',1,1);
+        INSERT INTO scans (person_id, card_id, scanned_at, local_date)
+          VALUES (1,'3377269862','2026-08-10 10:00:00','2026-08-10');
+        """
+    )
+    con.commit()
+    con.close()
+
+    import os
+    env = dict(
+        os.environ, DB_PATH=str(db), TIMEZONE="Asia/Tbilisi", ADMIN_USERNAME="admin",
+        ADMIN_PASSWORD="StrongTestPass!2026", SECRET_KEY="x" * 48,
+        TUNNEL_SECRET="t" * 32, HOST="127.0.0.1", PORT="8000",
+    )
+    py = sys.executable
+    r = subprocess.run([py, str(ROOT / "scripts" / "migrate_db.py")],
+                       cwd=str(ROOT), env=env, capture_output=True, text=True)
+    assert r.returncode == 0, r.stderr
+
+    con = sqlite3.connect(db)
+    try:
+        tables = {t[0] for t in con.execute(
+            "SELECT name FROM sqlite_master WHERE type='table'")}
+        assert "tap_log" in tables and "roster" in tables
+        # existing data untouched
+        assert con.execute("SELECT COUNT(*) FROM people").fetchone()[0] == 1
+        assert con.execute("SELECT COUNT(*) FROM scans").fetchone()[0] == 1
+    finally:
+        con.close()
+
+    # ...and running it again changes nothing
+    r2 = subprocess.run([py, str(ROOT / "scripts" / "migrate_db.py")],
+                        cwd=str(ROOT), env=env, capture_output=True, text=True)
+    assert r2.returncode == 0
+    assert "already current" in r2.stdout
+
+
+def test_update_endpoint_migrates_even_without_restart(app_ctx, monkeypatch):
+    """POST /api/update?restart=false must still apply the new schema."""
+    import app.routers.update as upd
+
+    calls = []
+
+    class _OK:
+        returncode = 0
+        stdout = "[update] applied 5 files\n"
+        stderr = ""
+
+    def fake_run(cmd, *a, **k):
+        calls.append(str(cmd[-1]))
+        return _OK()
+
+    monkeypatch.setattr(upd.subprocess, "run", fake_run)
+    ctx = app_ctx
+    c = ctx["client"]
+    H = ctx["headers"]
+    c.post("/api/login", headers=H,
+           json={"username": ctx["admin_user"], "password": ctx["admin_pass"]})
+
+    j = c.post("/api/update?restart=false", headers=H).json()
+
+    assert j["ok"] is True
+    assert j["restarting"] is False
+    assert j["migrated"] is True, "schema was not applied on the no-restart path"
+    assert any("migrate_db.py" in call for call in calls), calls

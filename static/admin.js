@@ -684,10 +684,11 @@
             var out = res.j && res.j.output ? "<br><small>" + esc(res.j.output) + "</small>" : "";
             notice(els.updateMsg, "ჩამოტვირთვა ვერ მოხერხდა." + out, "bad");
           } else {
-            notice(els.updateMsg,
-              "კოდი ჩამოიტვირთა ✓ — აპი აგრძელებს მუშაობას (v" +
-              esc(res.j.version_before_restart || "") + ").<br>" +
-              "ახალი ვერსია ამოქმედდება ლეპტოპის შემდეგი ჩართვისას.", "ok");
+            var msg = "კოდი ჩამოიტვირთა ✓ — აპი აგრძელებს მუშაობას (v" +
+              esc(res.j.version_before_restart || "") + ").";
+            if (res.j.migrated) msg += "<br>ბაზა მომზადებულია ✓";
+            msg += "<br>ახალი ვერსია ამოქმედდება ლეპტოპის შემდეგი ჩართვისას.";
+            notice(els.updateMsg, msg, "ok");
           }
           els.updateSafeBtn.disabled = false;
         }).catch(function () {
