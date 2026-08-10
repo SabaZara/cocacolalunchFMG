@@ -160,7 +160,9 @@ def test_blank_card_id_denied_and_registers_nothing(app_ctx):
     before = len(c.get("/api/people", headers=H).json())
     j = c.post("/api/scan", json={"card_id": "   "}).json()
     assert j["status"] == "DENIED"
-    assert j["reason"] == "უცნობი ბარათი"
+    # NOT "unknown card": an unknown card registers and eats. This is the
+    # reader-sent-nothing case (misread / stray Enter on an empty field).
+    assert j["reason"] == "ბარათი ვერ წაიკითხა"
     assert j["registered"] is False
     assert len(c.get("/api/people", headers=H).json()) == before
 

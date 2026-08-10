@@ -215,6 +215,127 @@ def detail_rows(session: Session, frm: date, to: date) -> list[dict]:
     return out
 
 
+# ------------------------------- tap log ----------------------------------- #
+L_STATUS_ALLOWED = "ნებადართული"
+L_STATUS_DENIED = "უარყოფილი"
+L_REASON = "მიზეზი"
+L_TOTAL_TAPS = "სულ"
+
+
+def tap_log(session: Session, frm: date, to: date,
+            status: str | None = None) -> dict:
+    """Every tap in the range, newest first, plus counters.
+
+    `status` filters to "ALLOWED" or "DENIED"; the counters always describe the
+    WHOLE range, so filtering the list never changes the totals underneath it.
+    """
+    from .models import TapLog
+
+    stmt = select(TapLog).where(
+        TapLog.local_date >= frm, TapLog.local_date <= to
+    ).order_by(TapLog.tapped_at.desc())
+    entries = session.exec(stmt).all()
+
+    resolve = _identify(session)
+    allowed = denied = 0
+    by_reason: dict[str, int] = {}
+    rows = []
+    for e in entries:
+        if e.status == "ALLOWED":
+            allowed += 1
+        else:
+            denied += 1
+            key = e.reason or "—"
+            by_reason[key] = by_reason.get(key, 0) + 1
+        if status and e.status != status:
+            continue
+        name, cc = resolve(e.card_id)
+        rows.append({
+            "date": e.local_date.isoformat(),
+            "time": _real_local(e.tapped_at).strftime("%H:%M:%S"),
+            "full_name": name,
+            "cc_code": cc,
+            "card_id": e.card_id,
+            "status": e.status,
+            "status_ka": L_STATUS_ALLOWED if e.status == "ALLOWED" else L_STATUS_DENIED,
+            "reason": e.reason or "",
+            "registered": e.registered,
+        })
+
+    return {
+        "from": frm.isoformat(),
+        "to": to.isoformat(),
+        "total": allowed + denied,
+        "allowed": allowed,
+        "denied": denied,
+        # Denial reasons, biggest first — this is what tells you WHY people
+        # were turned away without reading the whole list.
+        "by_reason": [{"reason": k, "count": v}
+                      for k, v in sorted(by_reason.items(),
+                                         key=lambda kv: -kv[1])],
+        "rows": rows,
+    }
+
+
+def tap_log_csv(rows: list[dict], include_pos: bool = True) -> bytes:
+    buf = io.StringIO()
+    w = csv.writer(buf)
+    header = [L_DATE, L_TIME, L_NAME, L_CC_CODE] \
+        + ([L_CARD_ID] if include_pos else []) + [L_STATUS, L_REASON]
+    w.writerow(header)
+    for r in rows:
+        line = [r["date"], r["time"], r.get("full_name", ""), r.get("cc_code", "")]
+        if include_pos:
+            line.append(r["card_id"])
+        line += [r["status_ka"], r.get("reason", "")]
+        w.writerow(line)
+    return buf.getvalue().encode("utf-8-sig")
+
+
+def tap_log_xlsx(rows: list[dict], data: dict, include_pos: bool = True) -> bytes:
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "ლოგი"
+    header = [L_DATE, L_TIME, L_NAME, L_CC_CODE] \
+        + ([L_CARD_ID] if include_pos else []) + [L_STATUS, L_REASON]
+    ws.append(header)
+    for r in rows:
+        line = [r["date"], r["time"], r.get("full_name", ""), r.get("cc_code", "")]
+        if include_pos:
+            line.append(str(r["card_id"]))
+        line += [r["status_ka"], r.get("reason", "")]
+        ws.append(line)
+
+    _style_header(ws, len(header))
+    widths = [13, 11, 30, 16] + ([16] if include_pos else []) + [15, 26]
+    _autofit(ws, widths)
+    code_from = 4
+    code_to = 5 if include_pos else 4
+    for row in ws.iter_rows(min_row=2, min_col=code_from, max_col=code_to):
+        for cell in row:
+            cell.number_format = "@"
+            cell.alignment = Alignment(horizontal="left")
+    ws.freeze_panes = "A2"
+    ws.auto_filter.ref = f"A1:{chr(ord('A') + len(header) - 1)}{ws.max_row}"
+
+    # Summary on its own sheet, so the log sheet stays a clean flat table.
+    s = wb.create_sheet("ჯამი")
+    s.append([L_PERIOD, f'{data["from"]} — {data["to"]}'])
+    s.append([L_TOTAL_TAPS, data["total"]])
+    s.append([L_STATUS_ALLOWED, data["allowed"]])
+    s.append([L_STATUS_DENIED, data["denied"]])
+    if data["by_reason"]:
+        s.append([])
+        s.append([L_REASON, L_COUNT])
+        for item in data["by_reason"]:
+            s.append([item["reason"], item["count"]])
+    _autofit(s, [30, 16])
+
+    out = io.BytesIO()
+    wb.save(out)
+    return out.getvalue()
+
+
 # ------------------------ quantitative (marketing) ------------------------- #
 def quantitative(session: Session, frm: date, to: date) -> dict:
     """Per-day meal counts split into the two meal windows + grand total.

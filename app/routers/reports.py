@@ -180,3 +180,50 @@ def export_attendance(
         media_type=media,
         headers={"Content-Disposition": f'attachment; filename="{fname}"'},
     )
+
+
+# --------------------------------- tap log --------------------------------- #
+@router.get("/taplog")
+def taplog(
+    frm: str = Query(alias="from"),
+    to: str = Query(alias="to"),
+    status: str | None = Query(default=None),
+    session: Session = Depends(get_session),
+) -> dict:
+    """Every tap in the range (allowed AND denied) plus counters."""
+    f, t = _parse_date(frm, "from"), _parse_date(to, "to")
+    _check_range(f, t)
+    if status not in (None, "", "ALLOWED", "DENIED"):
+        raise HTTPException(status_code=422, detail="არასწორი სტატუსი.")
+    return R.tap_log(session, f, t, status or None)
+
+
+@router.get("/taplog-export")
+def taplog_export(
+    frm: str = Query(alias="from"),
+    to: str = Query(alias="to"),
+    format: str = Query(default="xlsx"),
+    status: str | None = Query(default=None),
+    pos: int = Query(default=1),
+    session: Session = Depends(get_session),
+) -> Response:
+    f, t = _parse_date(frm, "from"), _parse_date(to, "to")
+    _check_range(f, t)
+    if status not in (None, "", "ALLOWED", "DENIED"):
+        raise HTTPException(status_code=422, detail="არასწორი სტატუსი.")
+    data = R.tap_log(session, f, t, status or None)
+    include_pos = bool(pos)
+    prefix = "taplog" if include_pos else "taplog_cc"
+    if format == "csv":
+        body = R.tap_log_csv(data["rows"], include_pos=include_pos)
+        media = "text/csv; charset=utf-8"
+        fname = _filename(prefix, f, t, "csv")
+    else:
+        body = R.tap_log_xlsx(data["rows"], data, include_pos=include_pos)
+        media = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        fname = _filename(prefix, f, t, "xlsx")
+    return Response(
+        content=body,
+        media_type=media,
+        headers={"Content-Disposition": f'attachment; filename="{fname}"'},
+    )

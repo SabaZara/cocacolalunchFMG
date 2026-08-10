@@ -147,7 +147,7 @@
     els.fromDate.value = today;
     els.toDate.value = today;
     els.dayDate.value = today;
-      loadToday();
+    loadToday();
     loadDaily();
     loadDay();
   });

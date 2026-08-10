@@ -119,8 +119,9 @@ invisible, always-focused field captures the card tap. Results:
 * **Denied** → full red, huge **„უარყოფილია"**, with a Georgian reason:
   * **„დღის ლიმიტი ამოიწურა"** — the daily limit is used up
   * **„ბარათი გათიშულია"** — card was deactivated by an admin
-  * **„უცნობი ბარათი"** — nothing was read from the card (empty tap). An
-    genuinely *unknown* card is no longer denied: it registers itself.
+  * **„ბარათი ვერ წაიკითხა"** — the reader sent nothing (a misread, or a
+    stray Enter on an empty field). A genuinely *unknown* card is never
+    denied: it registers itself and eats.
 
 The screen auto-returns to neutral after ~2.5s and debounces double taps. A
 small 🔔 button (bottom-right) toggles an optional beep. No names or photos are

@@ -40,9 +40,10 @@ STATUS_ALLOWED = "ALLOWED"
 STATUS_DENIED = "DENIED"
 
 # Georgian reason codes shown to the user.
-# Kept for the empty-card-id case; a card simply being new is no longer a
-# denial reason (unknown cards auto-register instead).
-REASON_UNKNOWN_CARD = "უცნობი ბარათი"
+# NOT "unknown card": an unknown card registers itself and eats. This fires
+# only when the reader sent nothing at all — a misread, or a stray Enter with
+# an empty field — so it names that instead of implying a rejected person.
+REASON_UNKNOWN_CARD = "ბარათი ვერ წაიკითხა"
 REASON_INACTIVE = "ბარათი გათიშულია"
 REASON_LIMIT_REACHED = "დღის ლიმიტი ამოიწურა"
 
@@ -97,7 +98,50 @@ def _get_or_create_person(session: Session, card_id: str) -> tuple[Person, bool]
     return person, True
 
 
+def _log_tap(session: Session, card_id: str, result: ScanResult) -> None:
+    """Record the tap — allowed or denied. NEVER breaks the scan.
+
+    The reader is the one thing that must keep working, so a logging failure
+    (disk full, table missing on a half-applied update) is swallowed: the
+    person still gets their meal and only the audit row is lost.
+    """
+    from .models import TapLog
+
+    try:
+        session.add(TapLog(
+            card_id=card_id,
+            status=result.status,
+            reason=result.reason or "",
+            registered=bool(result.registered),
+            limit_at_tap=int(result.limit or 0),
+            remaining=int(result.remaining or 0),
+            tapped_at=utc_now(),
+            local_date=local_date_for(utc_now(), get_settings().tz),
+        ))
+        session.commit()
+    except Exception:  # noqa: BLE001
+        try:
+            session.rollback()
+        except Exception:  # noqa: BLE001
+            pass
+
+
 def decide_scan(session: Session, raw_card_id: str) -> ScanResult:
+    """Decide the tap, then log it. See _decide for the decision itself.
+
+    The log is written AFTER the decision and inside its own guard: the reader
+    is the one thing that must never stop working, so no logging fault —
+    however it arises — can turn a granted meal into a refusal at the counter.
+    """
+    result = _decide(session, raw_card_id)
+    try:
+        _log_tap(session, normalize_card_id(raw_card_id), result)
+    except Exception:  # noqa: BLE001
+        pass
+    return result
+
+
+def _decide(session: Session, raw_card_id: str) -> ScanResult:
     settings = get_settings()
     tz = settings.tz
 

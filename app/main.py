@@ -134,6 +134,12 @@ def reports_page() -> FileResponse:
     return _page("reports.html")
 
 
+@app.get("/logs", include_in_schema=False)
+def logs_page() -> FileResponse:
+    """Tap log — every card tap, allowed and denied. Gated like the others."""
+    return _page("logs.html")
+
+
 @app.get("/healthz", include_in_schema=False)
 def healthz() -> JSONResponse:
     return JSONResponse({"ok": True})

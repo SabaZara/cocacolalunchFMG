@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="ka">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>ლოგი — სასადილო</title>
+  <script src="/static/ngrok-skip.js"></script>
+  <link rel="stylesheet" href="/static/app.css" />
+</head>
+<body>
+  <header class="topbar">
+    <h1>სასადილო</h1>
+    <nav>
+      <a href="/admin">ბარათები</a>
+      <a href="/reports">რეპორტები</a>
+      <a href="/logs" class="active">ლოგი</a>
+    </nav>
+    <span class="spacer"></span>
+    <span class="user" id="userLabel"></span>
+    <button class="ghost small" id="logoutBtn">გასვლა</button>
+  </header>
+
+  <div class="container">
+    <div class="card">
+      <h2><span class="h2-ico">🧾</span> ბარათების ლოგი — ყველა მიდება
+        <span class="spacer" style="flex:1"></span>
+        <button class="ghost small" id="logXlsx">ჩამოტვირთვა .xlsx</button>
+        <button class="ghost small" id="logCsv">ჩამოტვირთვა .csv</button>
+      </h2>
+
+      <div class="row" style="margin-bottom:10px">
+        <button class="ghost small" data-range="today">დღეს</button>
+        <button class="ghost small" data-range="week">ეს კვირა</button>
+        <button class="ghost small" data-range="month">ეს თვე</button>
+        <label class="ltr">დან <input id="logFrom" type="date" /></label>
+        <label class="ltr">მდე <input id="logTo" type="date" /></label>
+        <button id="logBtn">ჩვენება</button>
+        <span class="spacer" style="flex:1"></span>
+        <button class="ghost small" id="logXlsxCc">Coca-Cola კოდებით .xlsx</button>
+      </div>
+
+      <div class="hint" style="margin-bottom:12px">
+        ყველა ბარათის მიდება — მათ შორის უარყოფილი. აქ ჩანს ვინ სცადა,
+        როდის და რა ეწერა ეკრანზე.
+      </div>
+
+      <!-- counters -->
+      <div class="stats" id="logStats" style="margin-bottom:6px"></div>
+      <div id="logMsg"></div>
+
+      <div class="chips" id="logStatusChips" style="margin:12px 0 10px">
+        <button class="chip active" data-status="">ყველა</button>
+        <button class="chip" data-status="ALLOWED">ნებადართული</button>
+        <button class="chip" data-status="DENIED">უარყოფილი</button>
+        <span class="spacer" style="flex:1"></span>
+        <input id="logSearch" type="text" placeholder="ძებნა სახელით ან კოდით…"
+               style="min-width:240px" />
+      </div>
+
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th class="ltr">დრო</th>
+              <th>სახელი</th>
+              <th class="ltr">Coca-Cola კოდი</th>
+              <th class="ltr">ბარათის ID</th>
+              <th>სტატუსი</th>
+              <th>მიზეზი</th>
+            </tr>
+          </thead>
+          <tbody id="logBody"></tbody>
+        </table>
+      </div>
+
+      <div class="row" style="margin-top:12px">
+        <span class="spacer" style="flex:1"></span>
+        <span id="logCount" style="color:var(--muted)"></span>
+      </div>
+    </div>
+  </div>
+
+  <script src="/static/logs.js"></script>
+</body>
+</html>

@@ -58,6 +58,38 @@ class Scan(SQLModel, table=True):
     local_date: date = Field(index=True, nullable=False)
 
 
+class TapLog(SQLModel, table=True):
+    """One row per CARD TAP — allowed and denied alike.
+
+    `scans` only holds meals that were actually granted, so until now a denied
+    tap left no trace at all: a person turned away at the reader was invisible
+    afterwards, and there was no way to tell a busy day from a day full of
+    rejections. This is the raw record of what the reader saw and what the
+    screen showed back.
+
+    Deliberately independent of `scans`: meal counting must not change because
+    of logging, and a log row is never consulted when deciding a scan.
+    """
+
+    __tablename__ = "tap_log"
+
+    id: int | None = Field(default=None, primary_key=True)
+    # What the reader actually read (may be a card we have never seen).
+    card_id: str = Field(index=True, nullable=False)
+    # ALLOWED / DENIED, exactly as scan_service decided it.
+    status: str = Field(index=True, nullable=False)
+    # Georgian reason shown on the red screen; empty when allowed.
+    reason: str = Field(default="")
+    # True when this tap registered a brand-new card.
+    registered: bool = Field(default=False)
+    # The limit in force at that moment, and how many meals remained after.
+    limit_at_tap: int = Field(default=0)
+    remaining: int = Field(default=0)
+    tapped_at: datetime = Field(default_factory=utc_now, nullable=False)
+    # Local calendar date, so a day's log is one indexed lookup.
+    local_date: date = Field(index=True, nullable=False)
+
+
 class RosterEntry(SQLModel, table=True):
     """Coca-Cola personnel list: their card number -> that person's name.
 
