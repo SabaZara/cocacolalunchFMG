@@ -142,19 +142,26 @@ def decide_scan(session: Session, raw_card_id: str) -> ScanResult:
 
 
 def _decide(session: Session, raw_card_id: str) -> ScanResult:
+    from .models import UNLIMITED
+
     settings = get_settings()
     tz = settings.tz
 
-    # One limit for everybody, read fresh so an admin change takes effect on
-    # the very next tap without a restart.
-    limit = max(AC.get_daily_limit(), 0)
-
     card_id = normalize_card_id(raw_card_id)
     if not card_id:
+        # No card row to read a limit from; report the default so the screen
+        # still has a sensible number.
         return ScanResult(status=STATUS_DENIED, reason=REASON_UNKNOWN_CARD,
-                          limit=limit)
+                          limit=AC.get_daily_limit())
 
     person, created = _get_or_create_person(session, card_id)
+
+    # THIS card's own limit. Every card carries its own, so changing one
+    # person's limit never touches anybody else's.
+    raw_limit = int(person.daily_limit)
+    unlimited = raw_limit == UNLIMITED
+    limit = None if unlimited else max(raw_limit, 0)
+
     if not person.active:
         # Deactivated by an admin — stays blocked, and is not re-registered.
         return ScanResult(status=STATUS_DENIED, reason=REASON_INACTIVE,
@@ -164,7 +171,8 @@ def _decide(session: Session, raw_card_id: str) -> ScanResult:
     today = local_date_for(now, tz)
 
     already = _count_today(session, person.id, today)
-    if already >= limit:
+    # An unlimited card skips the check entirely: it can never hit a cap.
+    if not unlimited and already >= limit:
         return ScanResult(status=STATUS_DENIED, reason=REASON_LIMIT_REACHED,
                           remaining=0, limit=limit, registered=created)
 
@@ -174,7 +182,7 @@ def _decide(session: Session, raw_card_id: str) -> ScanResult:
     session.add(scan)
     session.flush()
     count_after = _count_today(session, person.id, today)
-    if count_after > limit:
+    if not unlimited and count_after > limit:
         # We over-committed in a race — undo this one. The person row was
         # committed separately above, so a card registered by this tap stays
         # registered; only the surplus meal is dropped.
@@ -187,7 +195,9 @@ def _decide(session: Session, raw_card_id: str) -> ScanResult:
     return ScanResult(
         status=STATUS_ALLOWED,
         scanned_at=local_time_str(scan.scanned_at, tz),
-        remaining=max(limit - count_after, 0),
+        # None = unlimited, so the kiosk shows "შეუზღუდავი" rather than a
+        # meaningless countdown.
+        remaining=None if unlimited else max(limit - count_after, 0),
         limit=limit,
         registered=created,
     )

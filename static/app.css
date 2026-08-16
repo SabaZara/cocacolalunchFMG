@@ -186,6 +186,12 @@ td.mono { font-variant-numeric: tabular-nums; font-weight: 600; letter-spacing: 
 }
 .name-input:disabled { opacity: .5; }
 
+/* per-card limit cell: number box + an "unlimited" toggle */
+.limit-cell { white-space: nowrap; }
+.limit-cell .limit-input { width: 62px; }
+.limit-cell .limit-input::placeholder { font-size: 15px; opacity: .55; }
+.limit-cell button { margin-inline-start: 4px; padding: 5px 8px; }
+
 /* toggle switch (used for ate-today + active) */
 .switch { position: relative; display: inline-block; width: 46px; height: 26px; vertical-align: middle; }
 .switch input { opacity: 0; width: 0; height: 0; }

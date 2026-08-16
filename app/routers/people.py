@@ -55,6 +55,7 @@ class PersonCreate(BaseModel):
     active: bool = True
     # Names can be filled in later; blank means the "----" placeholder.
     full_name: str | None = None
+    daily_limit: int | None = None
 
 
 class PersonUpdate(BaseModel):
@@ -62,6 +63,19 @@ class PersonUpdate(BaseModel):
     active: bool | None = None
     full_name: str | None = None
     department: str | None = None
+    # This card's own limit. -1 (UNLIMITED) removes the cap entirely;
+    # 0 blocks the card. Omitted = leave unchanged.
+    daily_limit: int | None = None
+
+
+def _clean_limit(value: int) -> int:
+    """Validate a per-card limit. UNLIMITED passes through; else clamp 0..MAX."""
+    from ..models import UNLIMITED
+
+    v = int(value)
+    if v == UNLIMITED or v < 0:
+        return UNLIMITED           # any negative means "no limit"
+    return min(v, AC.MAX_DAILY_LIMIT)
 
 
 def _ate_today_counts(session: Session) -> dict[int, int]:
@@ -97,7 +111,7 @@ def _to_out(p: Person, ate_count: int, roster: dict[str, str] | None = None) -> 
         active=p.active,
         ate_today=ate_count > 0,
         ate_count=ate_count,
-        daily_limit=AC.get_daily_limit(),   # global, not per-card
+        daily_limit=int(p.daily_limit),     # this card's own limit
         # Coca-Cola's spelling wins; hand-typed is the fallback.
         full_name=roster_name or typed,
         cc_code=cc,
@@ -135,6 +149,8 @@ def create_person(
         full_name=(payload.full_name or "").strip() or NAME_PLACEHOLDER,
         active=payload.active,
     )
+    if payload.daily_limit is not None:
+        person.daily_limit = _clean_limit(payload.daily_limit)
     session.add(person)
     try:
         session.commit()
@@ -166,6 +182,8 @@ def update_person(
         person.full_name = payload.full_name
     if payload.department is not None:
         person.department = payload.department
+    if payload.daily_limit is not None:
+        person.daily_limit = _clean_limit(payload.daily_limit)
 
     session.add(person)
     try:
@@ -206,8 +224,12 @@ def set_ate_today(
     ).all()
 
     if payload.ate:
-        # top up to the global daily limit
-        need = max(AC.get_daily_limit() - len(todays), 0)
+        # top up to THIS card's limit (an unlimited card gets one meal)
+        from ..models import UNLIMITED
+
+        lim = int(person.daily_limit)
+        target = 1 if lim == UNLIMITED else lim
+        need = max(target - len(todays), 0)
         for _ in range(need):
             session.add(Scan(person_id=person_id, card_id=person.card_id,
                              scanned_at=now, local_date=today))
@@ -291,12 +313,12 @@ class BulkRequest(BaseModel):
     action: str            # delete | activate | deactivate | ate | unate | setlimit
     ids: list[int] | None = None
     all: bool = False      # apply to every card (ignores ids)
-    # setlimit now sets the ONE global limit (cards have no individual limit),
-    # so `ids` / `all` are ignored for that action.
+    # setlimit: the new per-card limit for the targeted cards.
     value: int | None = None
 
 
-_BULK_ACTIONS = {"delete", "activate", "deactivate", "ate", "unate", "setlimit"}
+_BULK_ACTIONS = {"delete", "activate", "deactivate", "ate", "unate",
+                 "setlimit", "unlimit"}
 
 
 def _target_people(session: Session, req: BulkRequest) -> list[Person]:
@@ -311,16 +333,6 @@ def _target_people(session: Session, req: BulkRequest) -> list[Person]:
 def bulk(req: BulkRequest, session: Session = Depends(get_session)) -> dict:
     if req.action not in _BULK_ACTIONS:
         raise HTTPException(status_code=422, detail="უცნობი მოქმედება.")
-
-    # setlimit changes the single global limit — no card rows are touched, so
-    # it is handled before any per-person work.
-    if req.action == "setlimit":
-        try:
-            limit = AC.set_daily_limit(req.value)
-        except ValueError as exc:
-            raise HTTPException(status_code=422, detail=str(exc))
-        return {"ok": True, "action": "setlimit", "affected": 0,
-                "daily_limit": limit}
 
     people = _target_people(session, req)
     affected = 0
@@ -347,17 +359,36 @@ def bulk(req: BulkRequest, session: Session = Depends(get_session)) -> dict:
                 affected += 1
         session.commit()
 
+    elif req.action in ("setlimit", "unlimit"):
+        # unlimit removes the cap; setlimit applies a number. Both are per
+        # card, so "all" is how you change everybody at once.
+        from ..models import UNLIMITED
+
+        new_limit = UNLIMITED if req.action == "unlimit" \
+            else _clean_limit(req.value if req.value is not None else 0)
+        for p in people:
+            if int(p.daily_limit) != new_limit:
+                p.daily_limit = new_limit
+                session.add(p)
+                affected += 1
+        session.commit()
+
     elif req.action in ("ate", "unate"):
         tz = get_settings().tz
         now = utc_now()
         today = local_date_for(now, tz)
-        limit = AC.get_daily_limit()
+        from ..models import UNLIMITED
+
         for p in people:
             todays = session.exec(
                 select(Scan).where(Scan.person_id == p.id, Scan.local_date == today)
             ).all()
             if req.action == "ate":
-                need = max(limit - len(todays), 0)
+                # Fill to THIS card's limit. An unlimited card has no cap to
+                # fill to, so one meal is what "mark as eaten" can mean.
+                lim = int(p.daily_limit)
+                target = 1 if lim == UNLIMITED else lim
+                need = max(target - len(todays), 0)
                 for _ in range(need):
                     session.add(Scan(person_id=p.id, card_id=p.card_id,
                                      scanned_at=now, local_date=today))
@@ -376,8 +407,9 @@ def bulk(req: BulkRequest, session: Session = Depends(get_session)) -> dict:
 @router.get("/export.csv")
 def export_people_csv(session: Session = Depends(get_session)) -> Response:
     """Export the full card list (id, status, today's meals, limit) as Georgian CSV."""
+    from ..models import UNLIMITED
+
     counts = _ate_today_counts(session)
-    limit = AC.get_daily_limit()
     people = session.exec(select(Person).order_by(Person.card_id)).all()
     buf = io.StringIO()
     w = csv.writer(buf)
@@ -387,7 +419,7 @@ def export_people_csv(session: Session = Depends(get_session)) -> Response:
             p.card_id,
             "აქტიური" if p.active else "გათიშული",
             counts.get(p.id, 0),
-            limit,
+            "შეუზღუდავი" if int(p.daily_limit) == UNLIMITED else int(p.daily_limit),
         ])
     body = buf.getvalue().encode("utf-8-sig")  # BOM so Excel shows Georgian
     return Response(

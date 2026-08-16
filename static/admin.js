@@ -37,8 +37,9 @@
     searchBtn: document.getElementById("searchBtn"),
     clearSearchBtn: document.getElementById("clearSearchBtn"),
     exportCsvBtn: document.getElementById("exportCsvBtn"),
-    globalLimit: document.getElementById("globalLimit"),
-    saveLimitBtn: document.getElementById("saveLimitBtn"),
+    allLimit: document.getElementById("allLimit"),
+    setAllLimitBtn: document.getElementById("setAllLimitBtn"),
+    unlimitAllBtn: document.getElementById("unlimitAllBtn"),
     limitMsg: document.getElementById("limitMsg"),
     countLabel: document.getElementById("countLabel"),
     tableHead: document.getElementById("tableHead"),
@@ -189,9 +190,21 @@
           '<span class="track"></span></label>' +
       "</td>"
     );
-    // The limit is ONE global number, not per card — show it, don't edit it
-    // here (it is changed once, in the toolbar, for everybody).
-    cells.push('<td class="mono">' + p.daily_limit + "</td>");
+    // Each card carries its OWN limit, edited right here. -1 means no limit.
+    var unlimited = p.daily_limit < 0;
+    cells.push(
+      '<td class="limit-cell">' +
+        '<input type="number" min="0" max="20" class="limit-input" data-act="limit" ' +
+          'data-id="' + p.id + '" data-orig="' + p.daily_limit + '" ' +
+          'value="' + (unlimited ? "" : p.daily_limit) + '" ' +
+          (unlimited ? 'placeholder="∞" ' : "") +
+          'title="ამ ბარათის დღიური ლიმიტი" /> ' +
+        '<button class="small ghost" data-act="unlimit" data-id="' + p.id + '" ' +
+          'data-on="' + (unlimited ? "1" : "0") + '" ' +
+          'title="ლიმიტის მოხსნა / დაბრუნება">' +
+          (unlimited ? "∞ შეუზღუდავი" : "∞") + "</button>" +
+      "</td>"
+    );
     cells.push(
       '<td class="actions">' +
         '<button class="small ghost" data-act="toggle" data-id="' + p.id + '" data-active="' + (p.active ? "1" : "0") + '">' +
@@ -328,6 +341,44 @@
     else if (e.key === "Escape") { ni.value = ni.dataset.orig || ""; ni.blur(); }
   });
 
+  // Save a per-card limit when the operator leaves the field / presses Enter.
+  function saveLimit(input) {
+    var pid = input.dataset.id;
+    var orig = input.dataset.orig;
+    var raw = (input.value || "").trim();
+    // Empty box = remove the limit (unlimited), which is how "∞" reads.
+    var val = raw === "" ? -1 : parseInt(raw, 10);
+    if (isNaN(val) || val < -1) { input.value = orig < 0 ? "" : orig; return; }
+    if (String(val) === String(orig)) return;
+    input.disabled = true;
+    api("PUT", "/api/people/" + pid, { daily_limit: val }).then(function (res) {
+      if (!res.ok) {
+        notice(els.globalMsg, (res.j && res.j.detail) || "ლიმიტი ვერ შეიცვალა.", "bad");
+      } else {
+        notice(els.globalMsg, val < 0
+          ? "ლიმიტი მოხსნილია (შეუზღუდავი)."
+          : "ლიმიტი განახლდა: " + val, "ok");
+      }
+      input.disabled = false;
+      load();
+    }).catch(function () { input.disabled = false; load(); });
+  }
+
+  els.tableBody.addEventListener("blur", function (e) {
+    var li = e.target.closest && e.target.closest('input[data-act="limit"]');
+    if (li) saveLimit(li);
+  }, true);
+
+  els.tableBody.addEventListener("keydown", function (e) {
+    var li = e.target.closest && e.target.closest('input[data-act="limit"]');
+    if (!li) return;
+    if (e.key === "Enter") { e.preventDefault(); li.blur(); }
+    else if (e.key === "Escape") {
+      li.value = li.dataset.orig < 0 ? "" : li.dataset.orig;
+      li.blur();
+    }
+  });
+
   els.tableBody.addEventListener("change", function (e) {
     var rc = e.target.closest("input.rowcheck");
     if (rc) {
@@ -360,6 +411,23 @@
     if (!btn) return;
     var act = btn.dataset.act, id = btn.dataset.id, card = btn.dataset.card;
 
+    if (act === "unlimit") {
+      // Toggle between "no limit" and the default 1.
+      var turningOn = btn.dataset.on === "0";
+      var newVal = turningOn ? -1 : 1;
+      var q = turningOn
+        ? "ამ ბარათს მოეხსნას დღიური ლიმიტი? (შეუზღუდავი)"
+        : "დაუბრუნდეს დღიური ლიმიტი 1?";
+      if (!confirm(q)) return;
+      api("PUT", "/api/people/" + id, { daily_limit: newVal }).then(function (res) {
+        notice(els.globalMsg, res.ok
+          ? (turningOn ? "ლიმიტი მოხსნილია." : "ლიმიტი დაბრუნდა: 1")
+          : ((res.j && res.j.detail) || "ვერ შეიცვალა."), res.ok ? "ok" : "bad");
+        load();
+      });
+      return;
+    }
+
     if (act === "toggle") {
       var enabling = btn.dataset.active === "0";
       var tq = enabling
@@ -391,6 +459,7 @@
   var BULK_LABEL = {
     delete: "წაშლა", activate: "ჩართვა", deactivate: "გათიშვა",
     ate: "ჭამის მონიშვნა", unate: "ჭამის მოხსნა",
+    setlimit: "ლიმიტის დაყენება", unlimit: "ლიმიტის მოხსნა",
   };
 
   function runBulk(action, ids, all, value) {
@@ -411,6 +480,20 @@
     var action = btn.dataset.bulk;
     var ids = selectedIds();
     if (!ids.length) return;
+    if (action === "setlimit") {
+      var v = prompt("ახალი დღიური ლიმიტი მონიშნული " + ids.length + " ბარათისთვის:", "1");
+      if (v === null) return;
+      v = parseInt(v, 10);
+      if (isNaN(v) || v < 0) { notice(els.globalMsg, "არასწორი რიცხვი.", "bad"); return; }
+      if (!confirm("ლიმიტი " + v + " დაუყენდება " + ids.length + " ბარათს. გავაგრძელოთ?")) return;
+      runBulk("setlimit", ids, false, v);
+      return;
+    }
+    if (action === "unlimit") {
+      if (!confirm("მონიშნულ " + ids.length + " ბარათს მოეხსნება ლიმიტი (∞). გავაგრძელოთ?")) return;
+      runBulk("unlimit", ids, false);
+      return;
+    }
     if (action === "delete") {
       if (!confirm("დარწმუნებული ხართ, რომ გსურთ მონიშნული " + ids.length + " ბარათის წაშლა? ისტორიაც წაიშლება.")) return;
     } else {
@@ -543,52 +626,139 @@
     window.location.href = "/api/people/export.csv";
   });
 
-  // ------------------- global daily limit (one for all cards) -------------- //
-  // There are no per-card limits: this single number applies to every card and
-  // takes effect on the very next tap.
-  var limitOrig = null;
+  // ------------- limits for ALL cards at once (still per card) -------------- //
+  // Every card owns its limit; these buttons just apply the same change to
+  // every card in one go. A single card is edited in its own row.
+  function bulkAll(action, value, question) {
+    if (!confirm(question)) return;
+    var body = { action: action, all: true };
+    if (value !== undefined) body.value = value;
+    notice(els.globalMsg, "მიმდინარეობს…", "warn");
+    api("POST", "/api/people/bulk", body).then(function (res) {
+      if (!res.ok) {
+        notice(els.globalMsg, (res.j && res.j.detail) || "ვერ შესრულდა.", "bad");
+        return;
+      }
+      notice(els.globalMsg, "შეიცვალა " + res.j.affected + " ბარათი.", "ok");
+      load();
+    }).catch(function () { notice(els.globalMsg, "ვერ შესრულდა.", "bad"); });
+  }
 
-  function loadLimit() {
-    if (!els.globalLimit) return;
-    api("GET", "/api/settings").then(function (res) {
+  if (els.setAllLimitBtn) {
+    els.setAllLimitBtn.addEventListener("click", function () {
+      var v = parseInt(els.allLimit.value, 10);
+      if (isNaN(v) || v < 0) {
+        notice(els.globalMsg, "მიუთითეთ რიცხვი (0 ან მეტი).", "warn");
+        return;
+      }
+      bulkAll("setlimit", v,
+        "ყველა ბარათს დაუყენდება დღიური ლიმიტი " + v + ". გავაგრძელოთ?");
+    });
+  }
+
+  if (els.unlimitAllBtn) {
+    els.unlimitAllBtn.addEventListener("click", function () {
+      bulkAll("unlimit", undefined,
+        "ყველა ბარათს მოეხსნება ლიმიტი (შეუზღუდავი). გავაგრძელოთ?");
+    });
+  }
+
+  // --------------------- Coca-Cola roster (names) -------------------------- //
+  // Names come from Coca-Cola's own export rather than being typed by hand:
+  // a scan's POS id converts to their DDD-DDDDD code, which looks up the name.
+  function loadRosterStatus() {
+    if (!els.rosterState) return;
+    api("GET", "/api/people/roster-status").then(function (res) {
       if (!res.ok || !res.j) return;
-      limitOrig = res.j.daily_limit;
-      els.globalLimit.value = limitOrig;
-      if (res.j.max_daily_limit != null) els.globalLimit.max = res.j.max_daily_limit;
+      var n = res.j.count || 0;
+      els.rosterState.textContent = n
+        ? "სიაში: " + n + " ადამიანი ✓"
+        : "სია ჯერ არ არის ატვირთული";
     });
   }
 
-  if (els.saveLimitBtn) {
-    els.saveLimitBtn.addEventListener("click", function () {
-      var val = parseInt(els.globalLimit.value, 10);
-      if (isNaN(val) || val < 0) {
-        notice(els.globalMsg, "არასწორი რიცხვი.", "bad");
-        return;
-      }
-      if (limitOrig !== null && val === limitOrig) return;
-      if (!confirm("დღიური ლიმიტი შეიცვლება ყველა ბარათისთვის: " +
-                   limitOrig + " → " + val + ". გავაგრძელოთ?")) {
-        els.globalLimit.value = limitOrig;
-        return;
-      }
-      els.saveLimitBtn.disabled = true;
-      api("POST", "/api/settings", { daily_limit: val }).then(function (res) {
-        if (!res.ok) {
-          notice(els.globalMsg, (res.j && res.j.detail) || "ლიმიტი ვერ შეიცვალა.", "bad");
-          els.globalLimit.value = limitOrig;
-        } else {
-          limitOrig = res.j.daily_limit;
-          els.globalLimit.value = limitOrig;
-          notice(els.globalMsg, "დღიური ლიმიტი განახლდა: " + limitOrig, "ok");
-          load();   // the N / limit badges show the new number
-        }
-        els.saveLimitBtn.disabled = false;
-      }).catch(function () {
-        els.globalLimit.value = limitOrig;
-        els.saveLimitBtn.disabled = false;
-      });
+  if (els.rosterBtn) {
+    els.rosterBtn.addEventListener("click", function () {
+      var f = els.rosterFile.files[0];
+      if (!f) { notice(els.rosterMsg, "აირჩიეთ ფაილი.", "warn"); return; }
+      var fd = new FormData();
+      fd.append("file", f);
+      els.rosterBtn.disabled = true;
+      notice(els.rosterMsg, "მიმდინარეობს ატვირთვა…", "warn");
+      fetch("/api/people/roster-import", { method: "POST", body: fd })
+        .then(function (r) {
+          if (r.status === 401) { window.location.href = "/login"; throw new Error("auth"); }
+          return r.json();
+        })
+        .then(function (rep) {
+          var parts = ["დაემატა: " + rep.added, "განახლდა: " + rep.updated,
+                       "შეცდომა: " + rep.invalid_count, "სულ ხაზი: " + rep.total_rows];
+          var html = parts.join(" • ");
+          if (rep.invalid && rep.invalid.length) {
+            html += "<br><small>" + rep.invalid.slice(0, 10).map(function (i) {
+              return i.row + ": " + esc(i.reason);
+            }).join("<br>") + "</small>";
+          }
+          notice(els.rosterMsg, html, rep.invalid_count > 0 ? "warn" : "ok");
+          els.rosterBtn.disabled = false;
+          els.rosterFile.value = "";
+          loadRosterStatus();
+        })
+        .catch(function () {
+          notice(els.rosterMsg, "ატვირთვა ვერ მოხერხდა.", "bad");
+          els.rosterBtn.disabled = false;
+        });
     });
   }
+
+  // ----------------------------- import ----------------------------------- //
+  els.importBtn.addEventListener("click", function () {
+    var f = els.importFile.files[0];
+    if (!f) { notice(els.importMsg, "აირჩიეთ ფაილი.", "warn"); return; }
+    var fd = new FormData();
+    fd.append("file", f);
+    els.importBtn.disabled = true;
+    notice(els.importMsg, "მიმდინარეობს იმპორტი…", "warn");
+    fetch("/api/people/import", { method: "POST", body: fd })
+      .then(function (r) { if (r.status === 401) { window.location.href = "/login"; throw new Error("auth"); } return r.json(); })
+      .then(function (rep) {
+        var parts = ["დაემატა: " + rep.added, "დუბლიკატი: " + rep.duplicate_count,
+                     "შეცდომა: " + rep.invalid_count, "სულ ხაზი: " + rep.total_rows];
+        var kind = rep.invalid_count > 0 || rep.duplicate_count > 0 ? "warn" : "ok";
+        var html = parts.join(" • ");
+        if (rep.duplicates && rep.duplicates.length)
+          html += "<br><small>დუბლიკატები (ხაზი): " + rep.duplicates.map(function (d) { return d.row + ":" + esc(d.card_id); }).join(", ") + "</small>";
+        if (rep.invalid && rep.invalid.length)
+          html += "<br><small>შეცდომები (ხაზი): " + rep.invalid.map(function (d) { return d.row + ":" + esc(d.reason); }).join(", ") + "</small>";
+        notice(els.importMsg, html, kind);
+        els.importFile.value = "";
+        load();
+      })
+      .catch(function () { notice(els.importMsg, "იმპორტი ვერ მოხერხდა.", "bad"); })
+      .finally(function () { els.importBtn.disabled = false; });
+  });
+
+  // ----------------------------- search / filter / export ------------------ //
+  // Live, as-you-type search (client-side filter of the loaded list).
+  function applySearch() { searchText = els.search.value.trim().toLowerCase(); renderRows(); }
+  els.search.addEventListener("input", applySearch);
+  els.searchBtn.addEventListener("click", applySearch);
+  els.search.addEventListener("keydown", function (e) { if (e.key === "Enter") { e.preventDefault(); applySearch(); } });
+  els.clearSearchBtn.addEventListener("click", function () { els.search.value = ""; applySearch(); });
+
+  els.filterChips.addEventListener("click", function (e) {
+    var chip = e.target.closest("button.chip");
+    if (!chip) return;
+    filter = chip.dataset.filter;
+    Array.prototype.forEach.call(els.filterChips.querySelectorAll(".chip"), function (c) {
+      c.classList.toggle("active", c === chip);
+    });
+    renderRows();
+  });
+
+  els.exportCsvBtn.addEventListener("click", function () {
+    window.location.href = "/api/people/export.csv";
+  });
 
   // --------------------- backups (automatic; setup only) ------------------ //
   // Backups run on their own (weekly local + weekly GitHub). The only UI is a
@@ -768,7 +938,6 @@
     if (res.j && res.j.username) els.userLabel.textContent = res.j.username;
     renderHead();
     load();
-    loadLimit();
     loadBackupStatus();
     loadRosterStatus();
     startAutoRefresh();   // keep the list live as people tap at the kiosk

@@ -19,10 +19,15 @@ from .timeutil import utc_now
 # Placeholder used when a card is imported/added without a real name.
 NAME_PLACEHOLDER = "----"
 
-# Column default for people.daily_limit. The scan path does NOT read this — the
-# real limit is the global app_config.get_daily_limit(). Kept only so the
-# existing column (and old DBs) still have a sane value.
+# Meals per day a NEW card gets. Every card carries its own limit; this is
+# only the starting value for one that registers itself at the reader.
 DEFAULT_DAILY_LIMIT = 1
+
+# Sentinel stored in people.daily_limit meaning "no limit at all": the card is
+# never denied for the limit and may eat as often as it taps. Negative so it
+# can never collide with a real count, and so old rows (which are all >= 0)
+# keep their exact meaning.
+UNLIMITED = -1
 
 
 class Person(SQLModel, table=True):
@@ -39,9 +44,9 @@ class Person(SQLModel, table=True):
     # Set False by an admin to block a lost/stolen card. A deactivated card is
     # denied at the kiosk and is NOT re-created by auto-registration.
     active: bool = Field(default=True)
-    # LEGACY per-card limit. No longer consulted when deciding a scan; the
-    # limit is now one global number in app_config. Retained so existing
-    # databases need no destructive migration.
+    # Meals this card may claim per local day. Authoritative: the scan path
+    # reads THIS, so limits are per card. UNLIMITED (-1) means never denied
+    # for the limit; 0 means never allowed.
     daily_limit: int = Field(default=DEFAULT_DAILY_LIMIT, nullable=False)
     created_at: datetime = Field(default_factory=utc_now)
 

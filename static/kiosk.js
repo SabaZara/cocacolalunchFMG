@@ -73,6 +73,9 @@
       if (typeof data.remaining === "number") {
         sub += (sub ? "  •  " : "") +
           (data.remaining > 0 ? "დარჩა: " + data.remaining : "მეტი აღარ გაქვთ");
+      } else if (data.limit === null || data.limit === undefined) {
+        // No limit on this card — say so rather than showing nothing.
+        sub += (sub ? "  •  " : "") + "შეუზღუდავი";
       }
       setState("allowed", "ნებადართულია", sub);
       beep(true);
