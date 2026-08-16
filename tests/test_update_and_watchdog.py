@@ -409,3 +409,41 @@ def test_update_endpoint_migrates_even_without_restart(app_ctx, monkeypatch):
     assert j["restarting"] is False
     assert j["migrated"] is True, "schema was not applied on the no-restart path"
     assert any("migrate_db.py" in call for call in calls), calls
+
+
+def test_update_fails_loudly_when_nothing_was_copied(tmp_path, monkeypatch):
+    """An update that copies nothing must NOT report success.
+
+    apply_update exited 0 regardless, so a pull that silently changed nothing
+    showed "updated" in admin while the version never moved — leaving the
+    operator with a success message and no way to tell what went wrong.
+    """
+    import io
+    import zipfile
+
+    root = tmp_path / "install"
+    root.mkdir()
+    (root / "app").mkdir()
+    (root / "app" / "__init__.py").write_text('__version__ = "1.0.0"\n')
+
+    # A zip whose top folder holds none of the paths we copy.
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w") as zf:
+        zf.writestr("cocacolalunchFMG-main/UNRELATED.txt", "nothing to copy\n")
+
+    au = _install_apply_update(monkeypatch, root, buf.getvalue())
+    assert au.main() == 1, "reported success despite copying nothing"
+
+
+def test_update_reports_the_version_that_landed(tmp_path, monkeypatch):
+    """The operator needs to see the version actually written to disk."""
+    root = tmp_path / "install"
+    for d in ("app", "static", "scripts", "tests"):
+        (root / d).mkdir(parents=True)
+    (root / "app" / "__init__.py").write_text('__version__ = "1.0.0"\n')
+
+    au = _install_apply_update(monkeypatch, root, _fake_repo_zip(tmp_path))
+    assert au.main() == 0
+    # _fake_repo_zip ships 9.9.9; the check reads it back off disk, not from
+    # the version this process imported at boot.
+    assert au._version_on_disk() == "9.9.9"

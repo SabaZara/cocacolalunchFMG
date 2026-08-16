@@ -684,11 +684,23 @@
             var out = res.j && res.j.output ? "<br><small>" + esc(res.j.output) + "</small>" : "";
             notice(els.updateMsg, "ჩამოტვირთვა ვერ მოხერხდა." + out, "bad");
           } else {
-            var msg = "კოდი ჩამოიტვირთა ✓ — აპი აგრძელებს მუშაობას (v" +
-              esc(res.j.version_before_restart || "") + ").";
-            if (res.j.migrated) msg += "<br>ბაზა მომზადებულია ✓";
-            msg += "<br>ახალი ვერსია ამოქმედდება ლეპტოპის შემდეგი ჩართვისას.";
-            notice(els.updateMsg, msg, "ok");
+            var msg;
+            if (res.j.version_changed) {
+              msg = "კოდი ჩამოიტვირთა ✓ (v" + esc(res.j.version_on_disk || "") +
+                "). აპი ჯერ ძველ ვერსიაზე მუშაობს (v" +
+                esc(res.j.version_before_restart || "") + ") — სკანირება არ შეწყვეტილა.";
+              if (res.j.migrated) msg += "<br>ბაზა მომზადებულია ✓";
+              msg += "<br>ახალი ვერსია ამოქმედდება ლეპტოპის შემდეგი ჩართვისას.";
+              notice(els.updateMsg, msg, "ok");
+            } else {
+              // Downloaded, but the version on disk did not move: there was
+              // nothing new, or the copy silently failed. Say so plainly
+              // instead of reporting a success that changes nothing.
+              msg = "ჩამოტვირთვა დასრულდა, მაგრამ ვერსია <b>არ შეცვლილა</b> " +
+                "(v" + esc(res.j.version_on_disk || res.j.version_before_restart || "") + ").";
+              if (res.j.output) msg += "<br><small>" + esc(res.j.output) + "</small>";
+              notice(els.updateMsg, msg, "warn");
+            }
           }
           els.updateSafeBtn.disabled = false;
         }).catch(function () {
@@ -709,7 +721,10 @@
           els.updateBtn.disabled = false;
           return;
         }
-        var msg = "კოდი განახლდა";
+        var msg = res.j.version_changed
+          ? ("კოდი განახლდა → v" + esc(res.j.version_on_disk || ""))
+          : ("ჩამოტვირთვა დასრულდა, მაგრამ ვერსია <b>არ შეცვლილა</b> (v" +
+             esc(res.j.version_on_disk || res.j.version_before_restart || "") + ")");
         if (res.j.restarting) {
           msg += " — აპლიკაცია გადაიტვირთება. დაელოდეთ ~10 წამს, შემდეგ განაახლეთ გვერდი (Ctrl+F5).";
         }

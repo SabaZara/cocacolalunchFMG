@@ -57,11 +57,30 @@ def run_update(restart: bool = True) -> dict:
 
     from .. import __version__  # may be stale until restart; report pre-restart
 
+    # What version actually landed on disk. Read from the file rather than
+    # imported, because THIS process is still running the old code — an update
+    # that quietly changed nothing would otherwise report the old version as
+    # if it were the new one.
+    def _disk_version() -> str:
+        try:
+            text = (ROOT / "app" / "__init__.py").read_text(encoding="utf-8")
+            for line in text.splitlines():
+                if line.strip().startswith("__version__"):
+                    return line.split("=", 1)[1].strip().strip("\"'")
+        except OSError:
+            pass
+        return ""
+
+    on_disk = _disk_version()
     result = {
         "ok": ok,
         "applied": ok,
         "output": output.strip(),
         "version_before_restart": __version__,
+        "version_on_disk": on_disk,
+        # True when the download really moved us to different code. If this is
+        # False after a "successful" update, the pull did nothing.
+        "version_changed": bool(on_disk and on_disk != __version__),
         "restarting": False,
     }
     if not ok:

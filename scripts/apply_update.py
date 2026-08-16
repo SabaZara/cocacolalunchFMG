@@ -87,6 +87,22 @@ def _download(url: str) -> bytes:
     raise RuntimeError(f"download failed: {last}")
 
 
+def _version_on_disk() -> str:
+    """Read __version__ straight out of the file we just wrote.
+
+    Importing app would return the version THIS process started with, which is
+    the stale one — the whole point is to confirm what actually landed.
+    """
+    try:
+        text = (ROOT / "app" / "__init__.py").read_text(encoding="utf-8")
+        for line in text.splitlines():
+            if line.strip().startswith("__version__"):
+                return line.split("=", 1)[1].strip().strip("\"'")
+    except OSError:
+        pass
+    return ""
+
+
 def _top_level_files(base: Path) -> list[str]:
     """Top-level files to copy: the explicit list plus anything matching
     COPY_GLOBS that `base` actually contains (de-duplicated, stable order)."""
@@ -207,6 +223,24 @@ def main() -> int:
 
     shutil.rmtree(tmp, ignore_errors=True)
     print(f"[update] applied {copied} files from {GITHUB_REPO}@{GITHUB_BRANCH}")
+
+    # Prove the copy actually landed. Reporting success while nothing changed
+    # is worse than failing: the operator sees "updated", the version never
+    # moves, and there is nothing to act on. Read the version back OFF DISK
+    # (this process still holds the old one in memory).
+    if copied == 0:
+        print("[update] ERROR: downloaded the repo but copied 0 files.",
+              file=sys.stderr)
+        print("[update] The install folder may be read-only, or in use.",
+              file=sys.stderr)
+        return 1
+
+    on_disk = _version_on_disk()
+    if on_disk:
+        print(f"[update] version now on disk: {on_disk}")
+    else:
+        print("[update] WARNING: could not read the new version from disk.",
+              file=sys.stderr)
     print("[update] .env, lunch.db, backups/ and ngrok.exe were left untouched.")
     return 0
 
