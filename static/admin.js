@@ -836,7 +836,19 @@
     // show current version next to the button
     fetch("/api/update/status").then(function (r) { return r.json(); })
       .then(function (s) {
-        if (s && s.version) els.updateVer.textContent = "ვერსია v" + s.version + " • " + (s.repo || "");
+        if (!s || !s.version) return;
+        els.updateVer.textContent = "ვერსია v" + s.version + " • " + (s.repo || "");
+        // Files newer than the running process = the update landed but the
+        // app never restarted onto it. Say so loudly; this exact state looks
+        // identical to "the update did nothing".
+        if (s.restart_pending) {
+          notice(els.updateMsg,
+            "⚠ ფაილები განახლებულია დისკზე (v" + esc(s.version_on_disk) +
+            "), მაგრამ აპლიკაცია ისევ ძველ ვერსიაზე მუშაობს (v" +
+            esc(s.version) + ").<br>საჭიროა <b>გადატვირთვა</b>: დააჭირეთ " +
+            "„განახლება + გადატვირთვა" + ", ან კიოსკზე გაუშვით fix-now.bat." +
+            "<br><small>საქაღალდე: " + esc(s.install_path) + "</small>", "warn");
+        }
       }).catch(function () {});
 
     // Safe update: download the new code but DON'T restart. Python keeps

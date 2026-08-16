@@ -127,9 +127,36 @@ def _copy_tree(src: Path, dst: Path) -> int:
             target.mkdir(parents=True, exist_ok=True)
         else:
             target.parent.mkdir(parents=True, exist_ok=True)
-            shutil.copy2(item, target)
+            # copy2 preserves the SOURCE mtime, which for a GitHub zip can be
+            # older than the .pyc already cached next to it. Python then keeps
+            # running the stale bytecode and the update appears to do nothing.
+            # Copy the bytes, then stamp the file as new.
+            shutil.copyfile(item, target)
+            try:
+                os.utime(target, None)      # now
+            except OSError:
+                pass
             count += 1
     return count
+
+
+def _purge_bytecode(base: Path) -> int:
+    """Delete every __pycache__ under `base`. Returns directories removed.
+
+    Belt and braces alongside the mtime fix above: with no cached bytecode
+    Python must re-read the .py files it just received. This is why an update
+    could land new files on disk while the app kept serving the old code —
+    static files have no bytecode, so they updated instantly, and only the
+    Python modules appeared frozen.
+    """
+    removed = 0
+    for cache in base.rglob("__pycache__"):
+        try:
+            shutil.rmtree(cache, ignore_errors=True)
+            removed += 1
+        except OSError:
+            pass
+    return removed
 
 
 def snapshot_current(root: Path | None = None) -> Path:
@@ -222,6 +249,12 @@ def main() -> int:
             copied += 1
 
     shutil.rmtree(tmp, ignore_errors=True)
+
+    # Drop stale bytecode so the next start really loads what we just wrote.
+    purged = _purge_bytecode(ROOT)
+    if purged:
+        print(f"[update] cleared {purged} __pycache__ folder(s)")
+
     print(f"[update] applied {copied} files from {GITHUB_REPO}@{GITHUB_BRANCH}")
 
     # Prove the copy actually landed. Reporting success while nothing changed

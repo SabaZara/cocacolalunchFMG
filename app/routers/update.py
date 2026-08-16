@@ -36,10 +36,36 @@ def _python() -> str:
 
 @router.get("/status")
 def update_status() -> dict:
-    """Report the current version + configured repo so admin can show it."""
+    """Report the current version + configured repo so admin can show it.
+
+    Also reports where this process is actually running from and what is on
+    disk there. When "the update did nothing", the useful question is whether
+    the files changed at all and whether the running process is even looking
+    at the folder being updated — this answers both without shell access.
+    """
     from .. import __version__
+
     repo = os.environ.get("GITHUB_REPO", "SabaZara/cocacolalunchFMG")
-    return {"version": __version__, "repo": repo}
+
+    on_disk = ""
+    try:
+        for line in (ROOT / "app" / "__init__.py").read_text(
+                encoding="utf-8").splitlines():
+            if line.strip().startswith("__version__"):
+                on_disk = line.split("=", 1)[1].strip().strip("\"'")
+                break
+    except OSError:
+        pass
+
+    return {
+        "version": __version__,            # what this PROCESS is running
+        "version_on_disk": on_disk,        # what the FILES say right now
+        # True when the files were updated but the app never restarted onto
+        # them — the exact state that looks like "the update did nothing".
+        "restart_pending": bool(on_disk and on_disk != __version__),
+        "install_path": str(ROOT),
+        "repo": repo,
+    }
 
 
 @router.post("")
