@@ -19,15 +19,17 @@ from .timeutil import utc_now
 # Placeholder used when a card is imported/added without a real name.
 NAME_PLACEHOLDER = "----"
 
-# Meals per day a NEW card gets. Every card carries its own limit; this is
-# only the starting value for one that registers itself at the reader.
-DEFAULT_DAILY_LIMIT = 1
-
 # Sentinel stored in people.daily_limit meaning "no limit at all": the card is
 # never denied for the limit and may eat as often as it taps. Negative so it
 # can never collide with a real count, and so old rows (which are all >= 0)
 # keep their exact meaning.
 UNLIMITED = -1
+
+# Meals per day a NEW card gets — the starting value for a card that registers
+# itself at the reader. UNLIMITED, so a card that has never been seen is never
+# turned away: the canteen has no cap by default, and a per-card number is set
+# only for someone who should be limited.
+DEFAULT_DAILY_LIMIT = UNLIMITED
 
 
 class Person(SQLModel, table=True):

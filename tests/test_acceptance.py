@@ -29,9 +29,17 @@ def _login(ctx):
     assert r.status_code == 200, r.text
 
 
-def _seed_cards(ctx):
+def _seed_cards(ctx, limit=1):
+    """Seed the demo cards. Cards are UNLIMITED by default now, so tests about
+    limits give the seeded cards a real one."""
     with Session(ctx["db"].engine) as s:
         ctx["seed"].seed_sample_cards(s)
+        if limit is not None:
+            from app.models import Person
+            for p in s.exec(select(Person)).all():
+                p.daily_limit = limit
+                s.add(p)
+            s.commit()
 
 
 def _make_xlsx(values, header=None):
@@ -82,25 +90,29 @@ def test_limits_are_per_card(app_ctx):
     H = ctx["headers"]
     c = ctx["client"]
 
-    # Two cards register themselves and both get the default of 1.
+    # Two cards register themselves; both start UNLIMITED.
     c.post("/api/scan", json={"card_id": "CARDA"})
     c.post("/api/scan", json={"card_id": "CARDB"})
     listed = {p["card_id"]: p for p in c.get("/api/people", headers=H).json()}
-    assert listed["CARDA"]["daily_limit"] == 1
-    assert listed["CARDB"]["daily_limit"] == 1
+    assert listed["CARDA"]["daily_limit"] == -1
+    assert listed["CARDB"]["daily_limit"] == -1
 
-    # Raise CARDA only.
-    pid_a = listed["CARDA"]["id"]
+    # Cap them both, then raise CARDA only.
+    pid_a, pid_b = listed["CARDA"]["id"], listed["CARDB"]["id"]
+    for pid in (pid_a, pid_b):
+        c.put(f"/api/people/{pid}", headers=H, json={"daily_limit": 1})
+        c.post(f"/api/people/{pid}/ate", headers=H, json={"ate": False})
     r = c.put(f"/api/people/{pid_a}", headers=H, json={"daily_limit": 3})
     assert r.status_code == 200 and r.json()["daily_limit"] == 3
 
-    # CARDA now gets two more meals...
-    for expected in (1, 0):
+    # CARDA gets three meals...
+    for expected in (2, 1, 0):
         j = c.post("/api/scan", json={"card_id": "CARDA"}).json()
         assert j["status"] == "ALLOWED" and j["remaining"] == expected
     assert c.post("/api/scan", json={"card_id": "CARDA"}).json()["status"] == "DENIED"
 
     # ...while CARDB is untouched, still capped at its own 1.
+    assert c.post("/api/scan", json={"card_id": "CARDB"}).json()["status"] == "ALLOWED"
     j = c.post("/api/scan", json={"card_id": "CARDB"}).json()
     assert j["status"] == "DENIED" and j["limit"] == 1
     listed = {p["card_id"]: p for p in c.get("/api/people", headers=H).json()}
@@ -188,7 +200,8 @@ def test_unknown_card_auto_registers_and_is_allowed(app_ctx):
     j = c.post("/api/scan", json={"card_id": "BRANDNEW"}).json()
     assert j["status"] == "ALLOWED"
     assert j["registered"] is True          # the tap created the card
-    assert j["remaining"] == 0 and j["limit"] == 1
+    # New cards are UNLIMITED by default: no cap, so no countdown.
+    assert j["remaining"] is None and j["limit"] is None
     assert j["scanned_at"]
 
     # It is now a normal, active card in the admin list, with the meal counted.
@@ -196,7 +209,7 @@ def test_unknown_card_auto_registers_and_is_allowed(app_ctx):
     assert len(listed) == 1
     assert listed[0]["card_id"] == "BRANDNEW"
     assert listed[0]["active"] is True
-    assert listed[0]["ate_count"] == 1
+    assert listed[0]["ate_count"] >= 1
     # The API reports an unnamed card as blank, not as the internal "----"
     # placeholder: the UI shows an empty, editable name cell.
     assert listed[0]["full_name"] == ""
@@ -204,9 +217,9 @@ def test_unknown_card_auto_registers_and_is_allowed(app_ctx):
     # "BRANDNEW" is not a numeric POS id, so it has no Coca-Cola equivalent.
     assert listed[0]["cc_code"] == ""
 
-    # A second tap is a normal limit denial, and does NOT re-register.
+    # A second tap is allowed too (no limit) and does NOT re-register.
     j2 = c.post("/api/scan", json={"card_id": "BRANDNEW"}).json()
-    assert j2["status"] == "DENIED" and j2["reason"] == "დღის ლიმიტი ამოიწურა"
+    assert j2["status"] == "ALLOWED"
     assert j2["registered"] is False
     assert len(c.get("/api/people?q=BRANDNEW", headers=H).json()) == 1
 
@@ -298,7 +311,7 @@ def test_midnight_reset(app_ctx):
 def test_concurrent_taps_respect_limit(app_ctx):
     """Under concurrency the daily limit holds: exactly `limit` ALLOWED."""
     ctx = app_ctx
-    _seed_cards(ctx)
+    _seed_cards(ctx, limit=1)
     results = []
     lock = threading.Lock()
 
@@ -327,6 +340,12 @@ def test_concurrent_taps_on_an_unregistered_card(app_ctx):
     ctx = app_ctx
     _login(ctx)
     H = ctx["headers"]
+    # Register + cap the card first: an unlimited card cannot demonstrate that
+    # a race is held to a limit.
+    ctx["client"].post("/api/scan", json={"card_id": "RACE1"})
+    _pid = ctx["client"].get("/api/people?q=RACE1", headers=H).json()[0]["id"]
+    ctx["client"].put(f"/api/people/{_pid}", headers=H, json={"daily_limit": 1})
+    ctx["client"].post(f"/api/people/{_pid}/ate", headers=H, json={"ate": False})
     results = []
     lock = threading.Lock()
 
@@ -399,9 +418,9 @@ def test_admin_toggle_ate_today(app_ctx):
     r = c.post("/api/people", headers=H, json={"card_id": "EAT001"})
     pid = r.json()["id"]
     assert r.json()["ate_today"] is False and r.json()["ate_count"] == 0
-    assert r.json()["daily_limit"] == 1   # the global limit
+    assert r.json()["daily_limit"] == -1  # new cards are unlimited
 
-    # mark eaten -> fills up to the global daily limit (1)
+    # mark eaten -> an unlimited card has no cap to fill to, so one meal
     r = c.post(f"/api/people/{pid}/ate", headers=H, json={"ate": True})
     assert r.status_code == 200 and r.json()["ate_count"] == 1
 
@@ -409,7 +428,11 @@ def test_admin_toggle_ate_today(app_ctx):
     r = c.post(f"/api/people/{pid}/ate", headers=H, json={"ate": True})
     assert r.json()["ate_count"] == 1
 
-    # a real kiosk scan now reports limit reached (consistent with the manual mark)
+    # An unlimited card is never limit-denied, marked or not.
+    j = c.post("/api/scan", json={"card_id": "EAT001"}).json()
+    assert j["status"] == "ALLOWED"
+    # Give it a real limit and the manual mark now blocks the next tap.
+    c.put(f"/api/people/{pid}", headers=H, json={"daily_limit": 1})
     j = c.post("/api/scan", json={"card_id": "EAT001"}).json()
     assert j["status"] == "DENIED" and j["reason"] == "დღის ლიმიტი ამოიწურა"
 

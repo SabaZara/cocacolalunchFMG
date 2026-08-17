@@ -24,6 +24,17 @@ def _login(ctx):
                              "password": ctx["admin_pass"]})
 
 
+def _cap(ctx, card_id, limit=1):
+    """Give a card a real limit. New cards are UNLIMITED by default, so a test
+    that needs a limit-denial must ask for one explicitly."""
+    c, H = ctx["client"], ctx["headers"]
+    c.post("/api/scan", json={"card_id": card_id})          # registers it
+    pid = c.get(f"/api/people?q={card_id}", headers=H).json()[0]["id"]
+    c.put(f"/api/people/{pid}", headers=H, json={"daily_limit": limit})
+    # clear the registering meal so the test starts from zero
+    c.post(f"/api/people/{pid}/ate", headers=H, json={"ate": False})
+
+
 def _roster_xlsx(rows):
     wb = Workbook()
     ws = wb.active
@@ -41,6 +52,7 @@ def test_logs_allowed_and_denied_taps(app_ctx):
     H = ctx["headers"]
     _login(ctx)
 
+    _cap(ctx, "3377269862", 1)
     c.post("/api/scan", json={"card_id": "3377269862"})   # allowed
     c.post("/api/scan", json={"card_id": "3377269862"})   # denied: limit
     c.post("/api/scan", json={"card_id": "   "})          # denied: empty read
@@ -48,8 +60,9 @@ def test_logs_allowed_and_denied_taps(app_ctx):
     d = date.today().isoformat()
     log = c.get(f"/api/reports/taplog?from={d}&to={d}", headers=H).json()
 
-    assert log["total"] == 3
-    assert log["allowed"] == 1
+    # 1 registering tap from _cap + 3 taps here
+    assert log["total"] == 4
+    assert log["allowed"] == 2      # the registering tap + the first real one
     assert log["denied"] == 2
     reasons = {r["reason"]: r["count"] for r in log["by_reason"]}
     assert reasons["დღის ლიმიტი ამოიწურა"] == 1
@@ -67,6 +80,7 @@ def test_log_carries_name_and_code(app_ctx):
     c.post("/api/people/roster-import", headers=H,
            files={"file": ("r.xlsx", _roster_xlsx([("077-03174", "ია", "ცუცქირიძე")]),
                            "application/octet-stream")})
+    _cap(ctx, "3377269862", 1)
     c.post("/api/scan", json={"card_id": "3377269862"})
     c.post("/api/scan", json={"card_id": "3377269862"})   # denied
 
@@ -85,6 +99,7 @@ def test_status_filter_keeps_totals_whole(app_ctx):
     c = ctx["client"]
     H = ctx["headers"]
     _login(ctx)
+    _cap(ctx, "1111111111", 1)
     c.post("/api/scan", json={"card_id": "1111111111"})
     c.post("/api/scan", json={"card_id": "1111111111"})   # denied
 
@@ -93,9 +108,9 @@ def test_status_filter_keeps_totals_whole(app_ctx):
                         headers=H).json()
     assert len(only_denied["rows"]) == 1
     assert only_denied["rows"][0]["status"] == "DENIED"
-    # counters still describe the whole range
-    assert only_denied["total"] == 2
-    assert only_denied["allowed"] == 1
+    # counters still describe the whole range (incl. _cap's registering tap)
+    assert only_denied["total"] == 3
+    assert only_denied["allowed"] == 2
 
     assert c.get(f"/api/reports/taplog?from={d}&to={d}&status=NOPE",
                  headers=H).status_code == 422
@@ -107,6 +122,7 @@ def test_logging_never_changes_meal_counting(app_ctx):
     c = ctx["client"]
     H = ctx["headers"]
     _login(ctx)
+    _cap(ctx, "2222222222", 1)
     for _ in range(5):
         c.post("/api/scan", json={"card_id": "2222222222"})
 
@@ -114,7 +130,8 @@ def test_logging_never_changes_meal_counting(app_ctx):
     day = c.get(f"/api/reports/day?date={d}", headers=H).json()
     assert day["meals"] == 1            # limit 1 -> exactly one meal
     log = c.get(f"/api/reports/taplog?from={d}&to={d}", headers=H).json()
-    assert log["total"] == 5            # ...but all five attempts recorded
+    # every attempt recorded: _cap's registering tap + the 5 here
+    assert log["total"] == 6
 
 
 def test_log_export_both_formats(app_ctx):
@@ -125,6 +142,7 @@ def test_log_export_both_formats(app_ctx):
     c.post("/api/people/roster-import", headers=H,
            files={"file": ("r.xlsx", _roster_xlsx([("077-03174", "ია", "ცუცქირიძე")]),
                            "application/octet-stream")})
+    _cap(ctx, "3377269862", 1)
     c.post("/api/scan", json={"card_id": "3377269862"})
     c.post("/api/scan", json={"card_id": "3377269862"})
 
@@ -147,7 +165,7 @@ def test_log_export_both_formats(app_ctx):
     assert "ლოგი" in wb.sheetnames and "ჯამი" in wb.sheetnames
     summary = [[c.value for c in row] for row in wb["ჯამი"].iter_rows()]
     flat = {r[0]: r[1] for r in summary if r and r[0]}
-    assert flat["სულ"] == 2
+    assert flat["სულ"] == 3          # incl. _cap's registering tap
 
 
 def test_log_is_included_in_backups(app_ctx):
@@ -155,6 +173,7 @@ def test_log_is_included_in_backups(app_ctx):
     ctx = app_ctx
     c = ctx["client"]
     _login(ctx)
+    _cap(ctx, "3377269862", 1)
     c.post("/api/scan", json={"card_id": "3377269862"})
     c.post("/api/scan", json={"card_id": "3377269862"})   # denied
 
@@ -167,7 +186,7 @@ def test_log_is_included_in_backups(app_ctx):
             "SELECT name FROM sqlite_master WHERE type='table'")}
         assert "tap_log" in tables, "tap log missing from the backup"
         n = con.execute("SELECT COUNT(*) FROM tap_log").fetchone()[0]
-        assert n == 2
+        assert n == 3               # incl. _cap's registering tap
         statuses = {r[0] for r in con.execute("SELECT status FROM tap_log")}
         assert statuses == {"ALLOWED", "DENIED"}
     finally:
