@@ -9,6 +9,11 @@
     return fetch("/api/printer" + path, body === undefined ? {} : {
       method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(body)
     }).then(function (r) {
+      if (r.status === 401) throw new Error("სესია დასრულდა. განაახლეთ გვერდი და შედით თავიდან.");
+      if (r.headers && !(r.headers.get("content-type") || "").includes("application/json")) {
+        throw new Error("POS-თან კავშირი დროებით მიუწვდომელია. დაელოდეთ გადატვირთვას და განაახლეთ სია.");
+      }
+      if (r.status === 404) throw new Error("პრინტერის ახალი ფუნქცია ჯერ არ გაშვებულა. საჭიროა განახლებული აპის გადატვირთვა.");
       return r.json().then(function (data) {
         if (!r.ok) throw new Error(typeof data.detail === "string" ? data.detail :
           "პრინტერის პარამეტრები ვერ ჩაიტვირთა. განახლების შემდეგ საჭიროა აპის რესტარტი.");

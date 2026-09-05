@@ -913,19 +913,24 @@
         if (res.j.output) msg += "<br><small>" + esc(res.j.output) + "</small>";
         notice(els.updateMsg, msg, "ok");
         // the app is restarting; poll /api/version and reload when it changes/returns
-        var oldVer = (els.verBadge && els.verBadge.textContent) || "";
+        var targetVersion = res.j.version_on_disk;
+        var oldInstance = res.j.instance_before_restart;
         var tries = 0;
         var iv = setInterval(function () {
           tries++;
           fetch("/api/version").then(function (r) { return r.json(); })
             .then(function (v) {
-              if (v && v.version) {
+              if (v && v.version === targetVersion &&
+                  (!oldInstance || (v.instance_id && v.instance_id !== oldInstance))) {
                 clearInterval(iv);
                 notice(els.updateMsg, "განახლდა v" + v.version + ". იტვირთება…", "ok");
                 setTimeout(function () { location.reload(); }, 1200);
               }
             }).catch(function () { /* app still restarting */ });
-          if (tries > 30) { clearInterval(iv); els.updateBtn.disabled = false; }
+          if (tries > 60) {
+            clearInterval(iv); els.updateBtn.disabled = false;
+            notice(els.updateMsg, "ახალი ვერსიის გაშვება ვერ დადასტურდა. თუ კავშირი არ აღდგა, კიოსკზე გაუშვით LUNCH – Fix (fix-now.bat).", "bad");
+          }
         }, 2000);
       }).catch(function () {
         notice(els.updateMsg, "განახლება ვერ მოხერხდა (კავშირი).", "bad");

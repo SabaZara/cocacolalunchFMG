@@ -460,7 +460,7 @@ stop.bat        stops background processes started by start.bat
 
 ## Automatic USB receipts (Windows / HPRT TP80BE)
 
-Use **განახლება + გადატვირთვა** in admin to activate v2.5.0. Both update buttons
+Use **განახლება + გადატვირთვა** in admin to activate v2.5.1. Both update buttons
 now attempt to install the optional Windows printer component while preparing
 the new schema; the no-restart option activates Python changes after restart.
 Existing cards, history and .env stay in place; only a print-queue table is added.
@@ -484,3 +484,16 @@ do not reverse meals or block scan responses. See the full
 [POS checklist](scripts/PRINTER_SETUP.md) for paper tests, troubleshooting and
 ZIP/CLI fallback. The printing adapter uses the documented
 [pywin32 printer API](https://timgolden.me.uk/pywin32-docs/PyCDC.html).
+
+### Restart fix in v2.5.1
+
+Windows self-restart now terminates individual service processes rather than
+the app's process tree (which also contained the restart helper). It finds
+actual app/proxy port listeners when launcher PIDs are stale. Restart success
+requires the new process instance to answer, and admin waits for the target
+version instead of immediately reloading the old process. Printer requests
+show a connection/restart message when a tunnel returns HTML.
+
+If the tunnel is already offline, a remote update cannot reach it. Run the
+existing **LUNCH – Fix** shortcut / **fix-now.bat** on the POS (or let the
+installed watchdog recover it), then use the normal remote update button.

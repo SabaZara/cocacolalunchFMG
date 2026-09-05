@@ -109,6 +109,8 @@ def run_update(restart: bool = True) -> dict:
         "version_changed": bool(on_disk and on_disk != __version__),
         "restarting": False,
     }
+    from ..main import INSTANCE_ID
+    result["instance_before_restart"] = INSTANCE_ID
     if not ok:
         return result
 

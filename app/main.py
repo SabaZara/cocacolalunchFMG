@@ -8,6 +8,8 @@ from __future__ import annotations
 
 from contextlib import asynccontextmanager
 from pathlib import Path
+import os
+import uuid
 
 from fastapi import FastAPI
 from fastapi.responses import FileResponse, JSONResponse
@@ -22,6 +24,7 @@ from .tunnel_gate import TunnelGateMiddleware
 
 ROOT = Path(__file__).resolve().parent.parent
 STATIC_DIR = ROOT / "static"
+INSTANCE_ID = os.getenv("LUNCH_INSTANCE_ID") or uuid.uuid4().hex
 
 
 def _run_due_backups() -> None:
@@ -156,6 +159,7 @@ def version() -> JSONResponse:
     from . import __version__
     return JSONResponse({
         "version": __version__,
+        "instance_id": INSTANCE_ID,
         # Which location this is - shown in the admin topbar so two
         # identical-looking admin pages can be told apart at a glance.
         "location": get_settings().location_name,

@@ -1,11 +1,11 @@
-# POS printer setup — v2.5.0
+# POS printer setup — v2.5.1
 
 ## Short path: use the existing update button
 
 1. In remote admin click **განახლება + გადატვირთვა**. The update preserves
    the existing database and settings, adds the receipt queue table, and attempts
    to install the Windows printing component. Wait for the app to return and
-   verify **v2.5.0**. The no-restart button also prepares the component/schema,
+   verify **v2.5.1**. The no-restart button also prepares the component/schema,
    but new Python features only activate after restart.
 2. At the POS: connect/power the HPRT TP80BE by USB, load 80 mm paper, and install
    its Windows driver if it is not already installed. Set the driver's receipt

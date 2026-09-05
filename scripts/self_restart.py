@@ -13,10 +13,12 @@ Args: none. Reads PORT/PROXY_PORT/NGROK_* from .env via read_env-style parse.
 from __future__ import annotations
 
 import os
+import json
 import signal
 import subprocess
 import sys
 import time
+import uuid
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -25,6 +27,7 @@ sys.path.insert(0, str(ROOT))
 PIDS = ROOT / "lunch-pids.txt"
 VENV_PY = ROOT / (".venv/Scripts/python.exe" if os.name == "nt" else ".venv/bin/python")
 PYEXE = str(VENV_PY) if VENV_PY.exists() else sys.executable
+IS_WINDOWS = os.name == "nt"
 
 
 def _port_from_env(default: int = 8000) -> int:
@@ -63,8 +66,8 @@ def _kill_stray_ngrok() -> None:
     sweep by process name too.
     """
     try:
-        if os.name == "nt":
-            subprocess.run(["taskkill", "/IM", "ngrok.exe", "/T", "/F"],
+        if IS_WINDOWS:
+            subprocess.run(["taskkill", "/IM", "ngrok.exe", "/F"],
                            capture_output=True)
         else:
             subprocess.run(["pkill", "-f", "ngrok"], capture_output=True)
@@ -72,20 +75,52 @@ def _kill_stray_ngrok() -> None:
         pass
 
 
+def _listener_pids(ports: set[int]) -> set[int]:
+    """Actual Windows listeners, including Python children of venv launchers."""
+    if not IS_WINDOWS:
+        return set()
+    try:
+        result = subprocess.run(["netstat", "-ano", "-p", "TCP"],
+                                capture_output=True, text=True, timeout=10)
+        found = set()
+        for line in result.stdout.splitlines():
+            parts = line.split()
+            if len(parts) != 5 or parts[0] != "TCP" or parts[3] != "LISTENING":
+                continue
+            host, _, port = parts[1].rpartition(":")
+            if host not in {"127.0.0.1", "0.0.0.0", "[::]", "[::1]"}:
+                continue
+            if port.isdigit() and int(port) in ports and parts[4].isdigit():
+                found.add(int(parts[4]))
+        return found
+    except (OSError, subprocess.TimeoutExpired):
+        return set()
+
+
 def _kill_old() -> None:
+    port = _port_from_env()
+    # Stop the actual service listeners as well as launcher PIDs. A missing or
+    # stale PID file must not leave the old Python serving the same port.
+    pids = _listener_pids({port, port + 1})
     if PIDS.exists():
         for line in PIDS.read_text(encoding="utf-8", errors="ignore").splitlines():
             parts = line.split()
             if len(parts) >= 2 and parts[1].isdigit():
-                pid = int(parts[1])
-                try:
-                    if os.name == "nt":
-                        subprocess.run(["taskkill", "/PID", str(pid), "/T", "/F"],
-                                       capture_output=True)
-                    else:
-                        os.kill(pid, signal.SIGTERM)
-                except (ProcessLookupError, OSError):
-                    pass
+                pids.add(int(parts[1]))
+    for pid in sorted(pids):
+        if pid <= 0 or pid == os.getpid():
+            continue
+        try:
+            if IS_WINDOWS:
+                # NO /T: the running app spawned THIS helper. Killing its
+                # process tree also kills the helper before it can relaunch.
+                subprocess.run(["taskkill", "/PID", str(pid), "/F"],
+                               capture_output=True, timeout=10)
+            else:
+                os.kill(pid, signal.SIGTERM)
+        except (ProcessLookupError, OSError, subprocess.TimeoutExpired):
+            pass
+    if PIDS.exists():
         try:
             PIDS.unlink()
         except OSError:
@@ -107,8 +142,9 @@ def _spawn(label: str, cmd: list[str], env: dict | None = None) -> None:
     subprocess.run(full, cwd=str(ROOT), env=extra)
 
 
-def _healthy(port: int, seconds: float = 30.0) -> bool:
-    """Poll /healthz until it answers 200 or the deadline passes."""
+def _healthy(port: int, seconds: float = 30.0, expected_version: str = "",
+             expected_instance: str = "") -> bool:
+    """Verify the newly launched process, not merely any surviving old app."""
     import urllib.request
     deadline = time.time() + seconds
     while time.time() < deadline:
@@ -116,8 +152,18 @@ def _healthy(port: int, seconds: float = 30.0) -> bool:
             with urllib.request.urlopen(
                 f"http://127.0.0.1:{port}/healthz", timeout=2
             ) as r:
-                if r.status == 200:
-                    return True
+                if r.status != 200:
+                    continue
+            if expected_version or expected_instance:
+                with urllib.request.urlopen(f"http://127.0.0.1:{port}/api/version", timeout=2) as r:
+                    info = json.load(r)
+                if expected_version and info.get("version") != expected_version:
+                    time.sleep(1)
+                    continue
+                if expected_instance and info.get("instance_id") != expected_instance:
+                    time.sleep(1)
+                    continue
+            return True
         except Exception:  # noqa: BLE001
             pass
         time.sleep(1)
@@ -135,6 +181,7 @@ def _log(msg: str) -> None:
 
 
 def main() -> int:
+    _log("[self_restart] restart helper started")
     # Let the HTTP response to the admin browser flush first.
     time.sleep(4)
     _kill_old()
@@ -147,7 +194,8 @@ def main() -> int:
     proxy_port = app_port + 1
 
     # app
-    _spawn("app", [PYEXE, str(ROOT / "run.py")])
+    instance = uuid.uuid4().hex
+    _spawn("app", [PYEXE, str(ROOT / "run.py")], env={"LUNCH_INSTANCE_ID": instance})
     # proxy
     _spawn("proxy", [PYEXE, str(ROOT / "tunnel_proxy.py")],
            env={"PROXY_PORT": str(proxy_port)})
@@ -190,7 +238,7 @@ def main() -> int:
     # If the (possibly just-updated) app does not become healthy, restore the
     # pre-update code from .rollback/ and relaunch it, so a bad update can
     # never strand the kiosk.
-    if _healthy(app_port, seconds=30):
+    if _healthy(app_port, seconds=30, expected_instance=instance):
         _log("[self_restart] app healthy.")
         return 0
 
