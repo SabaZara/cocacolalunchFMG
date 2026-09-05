@@ -16,7 +16,7 @@ from fastapi.staticfiles import StaticFiles
 from .config import ConfigError, get_settings, validate_settings
 from .db import init_db
 from . import backup as B
-from .routers import auth, backup, people, reports, scan, settings as settings_router, update
+from .routers import auth, backup, people, printer, reports, scan, settings as settings_router, update
 from .seed import run_startup_seed
 from .tunnel_gate import TunnelGateMiddleware
 
@@ -60,6 +60,11 @@ async def lifespan(_app: FastAPI):
     stop = threading.Event()
     ticker = threading.Thread(target=_backup_ticker, args=(stop,), daemon=True)
     ticker.start()
+    from .receipt import worker
+    from .db import engine
+    printer_thread = threading.Thread(target=worker, args=(stop, engine),
+                                      name="receipt-printer", daemon=True)
+    printer_thread.start()
     try:
         yield
     finally:
@@ -97,6 +102,7 @@ app.include_router(reports.router)   # gated
 app.include_router(update.router)    # gated (remote self-update)
 app.include_router(backup.router)    # gated (backups + GitHub upload)
 app.include_router(settings_router.router)  # gated (editable meal-split time)
+app.include_router(printer.router)  # authenticated remote printer setup
 
 # Static assets (css/js). The gate always allows /static/.
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")

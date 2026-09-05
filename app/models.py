@@ -123,3 +123,14 @@ class Admin(SQLModel, table=True):
     id: int | None = Field(default=None, primary_key=True)
     username: str = Field(index=True, unique=True, nullable=False)
     password_hash: str = Field(nullable=False)
+
+
+class ReceiptJob(SQLModel, table=True):
+    """Immutable receipt snapshot; submitted means accepted by Windows, not paper confirmation."""
+    __tablename__ = "receipt_jobs"
+
+    id: int | None = Field(default=None, primary_key=True)
+    tap_id: int = Field(unique=True, nullable=False)
+    body: str
+    state: str = Field(default="pending", index=True)
+    error: str = Field(default="")

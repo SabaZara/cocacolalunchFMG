@@ -34,6 +34,8 @@ def app_ctx(monkeypatch):
     monkeypatch.setenv("TUNNEL_SECRET", "tunnel-secret-value-123456")
     monkeypatch.setenv("HOST", "127.0.0.1")
     monkeypatch.setenv("PORT", "8000")
+    # Never send a test receipt to a real installed printer.
+    monkeypatch.setenv("RECEIPT_PRINTING", "false")
     # Deterministic clock correction + meal windows for report tests.
     monkeypatch.setenv("KIOSK_CLOCK_AHEAD_MINUTES", "14")
     monkeypatch.setenv("MEAL1_START", "00:00")
@@ -73,6 +75,8 @@ def app_ctx(monkeypatch):
     importlib.reload(app_config)
     # Isolate runtime settings per test.
     app_config.APP_CONFIG_PATH = __import__("pathlib").Path(tmpdir) / "app-config.json"
+    import app.receipt_config as receipt_config
+    monkeypatch.setattr(receipt_config, "CONFIG_PATH", Path(tmpdir) / "receipt-config.json")
     # Routers import the reloaded modules.
     import app.routers.scan, app.routers.auth, app.routers.people, app.routers.reports, app.routers.update, app.routers.backup, app.routers.settings  # noqa
     importlib.reload(app.routers.scan)

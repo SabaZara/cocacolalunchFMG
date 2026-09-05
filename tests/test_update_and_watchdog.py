@@ -447,3 +447,82 @@ def test_update_reports_the_version_that_landed(tmp_path, monkeypatch):
     # _fake_repo_zip ships 9.9.9; the check reads it back off disk, not from
     # the version this process imported at boot.
     assert au._version_on_disk() == "9.9.9"
+
+
+def test_local_release_preserves_data_and_delivers_printer_files(tmp_path, monkeypatch):
+    import io
+    import zipfile
+    root = tmp_path / 'pos'
+    (root / 'app').mkdir(parents=True)
+    (root / 'app/__init__.py').write_text('__version__ = "2.4.0"\n')
+    (root / '.env').write_text('RECEIPT_PRINTING=false\n')
+    (root / 'lunch.db').write_bytes(b'EXISTING-DATA')
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, 'w') as zf:
+        for name in ['app/__init__.py', 'app/models.py', 'app/receipt.py',
+                     'app/scan_service.py', 'scripts/receipt_printer.py', 'requirements.txt']:
+            zf.writestr('release/' + name, (ROOT / name).read_bytes())
+    archive = tmp_path / 'release.zip'
+    archive.write_bytes(buffer.getvalue())
+    au = _install_apply_update(monkeypatch, root, b'not used')
+    def unexpected_download(url):
+        raise AssertionError('Local installation must not download GitHub')
+    monkeypatch.setattr(au, '_download', unexpected_download)
+    assert au.main(archive) == 0
+    assert (root / '.env').read_text() == 'RECEIPT_PRINTING=false\n'
+    assert (root / 'lunch.db').read_bytes() == b'EXISTING-DATA'
+    assert (root / 'app/receipt.py').read_bytes() == (ROOT / 'app/receipt.py').read_bytes()
+    assert (root / 'scripts/receipt_printer.py').exists()
+    assert 'pywin32' in (root / 'requirements.txt').read_text()
+    assert '2.4.0' in (root / '.rollback/app/__init__.py').read_text()
+
+
+def test_autoupdate_does_not_downgrade_local_printer_release(tmp_path, monkeypatch):
+    import io
+    import zipfile
+    root = tmp_path / 'pos'
+    (root / 'app').mkdir(parents=True)
+    (root / 'app/__init__.py').write_text('__version__ = "2.5.0"\n')
+    (root / 'app/receipt.py').write_text('# preserve new feature\n')
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, 'w') as zf:
+        zf.writestr('old/app/__init__.py', '__version__ = "2.4.0"\n')
+        zf.writestr('old/app/scan_service.py', '# old scan\n')
+    au = _install_apply_update(monkeypatch, root, buffer.getvalue())
+    assert au.main() == 0
+    assert '2.5.0' in (root / 'app/__init__.py').read_text()
+    assert (root / 'app/receipt.py').exists()
+    assert not (root / 'app/scan_service.py').exists()
+    assert not (root / '.rollback').exists()
+
+
+def test_update_restart_button_schedules_restart_after_migration(app_ctx, monkeypatch):
+    from types import SimpleNamespace
+    import app.routers.update as upd
+    calls = []
+    monkeypatch.setattr(upd.subprocess, 'run', lambda cmd, **kwargs: (
+        calls.append(Path(cmd[-1]).name) or SimpleNamespace(returncode=0, stdout='ok', stderr='')))
+    monkeypatch.setattr(upd.subprocess, 'Popen', lambda cmd, **kwargs: calls.append(Path(cmd[-1]).name))
+    client = app_ctx['client']
+    client.post('/api/login', headers=app_ctx['headers'], json={
+        'username': app_ctx['admin_user'], 'password': app_ctx['admin_pass']})
+    response = client.post('/api/update?restart=true', headers=app_ctx['headers']).json()
+    assert response['ok'] and response['migrated'] and response['restarting']
+    assert calls == ['apply_update.py', 'migrate_db.py', 'self_restart.py']
+
+
+def test_receipt_table_migration_keeps_existing_records(app_ctx):
+    from sqlalchemy import text
+    from sqlmodel import Session, select
+    from app.models import Person, Scan, TapLog
+    engine = app_ctx['db'].engine
+    with Session(engine) as session:
+        app_ctx['scan_service'].decide_scan(session, 'existing-card')
+        before = tuple(len(session.exec(select(model)).all()) for model in (Person, Scan, TapLog))
+        session.execute(text('DROP TABLE receipt_jobs'))
+        session.commit()
+    app_ctx['db'].init_db()
+    app_ctx['db'].init_db()
+    with Session(engine) as session:
+        assert tuple(len(session.exec(select(model)).all()) for model in (Person, Scan, TapLog)) == before
+        assert session.execute(text('SELECT count(*) FROM receipt_jobs')).scalar_one() == 0

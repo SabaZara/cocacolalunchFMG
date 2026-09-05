@@ -457,3 +457,30 @@ kiosk-test.bat  opens the local card-reader simulator
 diagnose.bat    writes diagnose.txt when startup fails
 stop.bat        stops background processes started by start.bat
 ```
+
+## Automatic USB receipts (Windows / HPRT TP80BE)
+
+Use **განახლება + გადატვირთვა** in admin to activate v2.5.0. Both update buttons
+now attempt to install the optional Windows printer component while preparing
+the new schema; the no-restart option activates Python changes after restart.
+Existing cards, history and .env stay in place; only a print-queue table is added.
+
+At the POS, connect USB and install the printer's Windows driver if necessary.
+Then use the remote admin **ჩეკის პრინტერი** section: refresh/select the printer,
+print a sample, inspect the paper, and enable automatic printing. Settings apply
+without restart and are saved in .receipt-config.json. A remote component-install
+retry button is available if the update could not download it.
+
+Receipts show the known name, date/time, daily sequence and per-card daily tap
+count. The second tap prints **დღეს ბარათი მეორედ არის გამოყენებული** in bold;
+third and later taps show their actual count. Denials explicitly say no meal
+was granted. Counts include denied attempts, not just meals. Names prefer the
+roster, then manual name, then არაიდენტიფიცირებული. Timestamps use the kiosk clock
+and TIMEZONE, without the report-only clock correction.
+
+The background print queue survives restart. Windows submission is not proof of
+paper output; failed/uncertain jobs are not automatically resent. Printer faults
+do not reverse meals or block scan responses. See the full
+[POS checklist](scripts/PRINTER_SETUP.md) for paper tests, troubleshooting and
+ZIP/CLI fallback. The printing adapter uses the documented
+[pywin32 printer API](https://timgolden.me.uk/pywin32-docs/PyCDC.html).

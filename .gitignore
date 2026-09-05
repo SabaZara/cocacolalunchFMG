@@ -8,6 +8,8 @@
 backups/
 .backup-config.json
 .app-config.json
+.receipt-config.json
+.receipt-config.tmp
 
 # real card lists / imports (never commit real card IDs)
 cards*.xlsx

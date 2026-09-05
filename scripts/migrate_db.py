@@ -39,6 +39,13 @@ def main() -> int:
             print(f"[migrate] added: {', '.join(added)}")
         else:
             print("[migrate] schema already current")
+        # Even the already-installed v2.4 updater launches this NEW script.
+        # Bootstrap optional printing here so no terminal command is needed.
+        if sys.platform == "win32":
+            from scripts.ensure_printer_support import ensure
+            support = ensure()
+            print("[printer] component ready" if support["ok"] else
+                  "[printer] component unavailable; retry from the admin printer section")
         return 0
     except Exception as exc:  # noqa: BLE001
         print(f"[migrate] failed: {exc}", file=sys.stderr)

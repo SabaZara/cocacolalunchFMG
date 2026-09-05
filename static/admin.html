@@ -162,6 +162,26 @@
       <div id="backupMsg"></div>
     </details>
 
+    <div class="card" id="printerPanel">
+      <h2><span class="h2-ico">🖨️</span> ჩეკის პრინტერი</h2>
+      <div class="row">
+        <label for="receiptPrinter">პრინტერი</label>
+        <select id="receiptPrinter"><option value="">აირჩიეთ პრინტერი</option></select>
+        <button id="printerRefresh" class="ghost">სიის განახლება</button>
+        <button id="printerTest" class="ghost">საცდელი ჩეკი</button>
+      </div>
+      <div class="row" style="margin-top:12px">
+        <label><input type="checkbox" id="receiptEnabled" /> ავტომატური ბეჭდვა</label>
+        <button id="printerSave">შენახვა</button>
+        <button id="printerInstall" class="ghost" hidden>ბეჭდვის კომპონენტის დაყენება</button>
+      </div>
+      <p class="hint">შეაერთეთ პრინტერი USB-ით და დააყენეთ მისი Windows დრაივერი.
+        აირჩიეთ პრინტერი, დაბეჭდეთ საცდელი ჩეკი და შეამოწმეთ ქართული ტექსტი და ჭრა.
+        შემდეგ ჩართეთ ავტომატური ბეჭდვა. შენახვა მოქმედებს მაშინვე, რესტარტის გარეშე.</p>
+      <div id="printerState" class="hint" aria-live="polite"></div>
+      <div id="printerMsg" role="status"></div>
+    </div>
+
     <!-- System / remote update -->
     <div class="card">
       <h2><span class="h2-ico">🔄</span> სისტემა</h2>
@@ -184,5 +204,6 @@
   </div>
 
   <script src="/static/admin.js"></script>
+  <script src="/static/printer.js"></script>
 </body>
 </html>

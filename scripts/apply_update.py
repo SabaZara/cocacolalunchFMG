@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import io
 import os
+import re
 import shutil
 import ssl
 import sys
@@ -87,14 +88,14 @@ def _download(url: str) -> bytes:
     raise RuntimeError(f"download failed: {last}")
 
 
-def _version_on_disk() -> str:
+def _version_on_disk(base: Path | None = None) -> str:
     """Read __version__ straight out of the file we just wrote.
 
     Importing app would return the version THIS process started with, which is
     the stale one — the whole point is to confirm what actually landed.
     """
     try:
-        text = (ROOT / "app" / "__init__.py").read_text(encoding="utf-8")
+        text = ((base or ROOT) / "app" / "__init__.py").read_text(encoding="utf-8")
         for line in text.splitlines():
             if line.strip().startswith("__version__"):
                 return line.split("=", 1)[1].strip().strip("\"'")
@@ -195,16 +196,20 @@ def restore_rollback(root: Path | None = None) -> int:
     return _copy_tree(src, base)
 
 
-def main() -> int:
+def main(archive: Path | None = None) -> int:
     if "REPLACE_ME" in GITHUB_REPO:
         print("[update] GITHUB_REPO is not set. Edit scripts/apply_update.py or set")
         print("[update] GITHUB_REPO in update.bat, e.g. yourname/lunchFMG")
         return 2
 
-    url = _zip_url()
-    print(f"[update] downloading {url}")
     try:
-        data = _download(url)
+        if archive is not None:
+            print(f"[update] reading local release {archive}")
+            data = archive.read_bytes()
+        else:
+            url = _zip_url()
+            print(f"[update] downloading {url}")
+            data = _download(url)
     except Exception as exc:  # noqa: BLE001
         print(f"[update] {exc}")
         print("[update] Check the repo name/branch and the kiosk's internet.")
@@ -222,6 +227,15 @@ def main() -> int:
         print("[update] unexpected zip layout; aborting.")
         shutil.rmtree(tmp, ignore_errors=True)
         return 1
+
+    # A locally installed release may be ahead of GitHub. Autostart must not
+    # silently replace it with an older version at the next reboot.
+    installed, incoming = _version_on_disk(), _version_on_disk(extracted)
+    if all(re.fullmatch(r"\d+\.\d+\.\d+", value) for value in (installed, incoming)):
+        if tuple(map(int, incoming.split("."))) < tuple(map(int, installed.split("."))):
+            print(f"[update] skipped older version {incoming}; keeping installed {installed}.")
+            shutil.rmtree(tmp, ignore_errors=True)
+            return 0
 
     # Snapshot the current (working) code BEFORE overwriting anything, so the
     # restart step can auto-rollback if the new code fails to start.
@@ -255,7 +269,8 @@ def main() -> int:
     if purged:
         print(f"[update] cleared {purged} __pycache__ folder(s)")
 
-    print(f"[update] applied {copied} files from {GITHUB_REPO}@{GITHUB_BRANCH}")
+    source_label = str(archive) if archive is not None else f"{GITHUB_REPO}@{GITHUB_BRANCH}"
+    print(f"[update] applied {copied} files from {source_label}")
 
     # Prove the copy actually landed. Reporting success while nothing changed
     # is worse than failing: the operator sees "updated", the version never
@@ -279,4 +294,8 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    import argparse
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--archive", type=Path,
+                        help="Apply a local release ZIP instead of downloading GitHub")
+    sys.exit(main(parser.parse_args().archive))

@@ -25,6 +25,7 @@ re-reads the row the winner committed instead of failing the tap.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import datetime
 
 from sqlalchemy import func
 from sqlalchemy.exc import IntegrityError
@@ -98,7 +99,8 @@ def _get_or_create_person(session: Session, card_id: str) -> tuple[Person, bool]
     return person, True
 
 
-def _log_tap(session: Session, card_id: str, result: ScanResult) -> None:
+def _log_tap(session: Session, card_id: str, result: ScanResult,
+             now: datetime | None = None) -> None:
     """Record the tap — allowed or denied. NEVER breaks the scan.
 
     The reader is the one thing that must keep working, so a logging failure
@@ -108,16 +110,27 @@ def _log_tap(session: Session, card_id: str, result: ScanResult) -> None:
     from .models import TapLog
 
     try:
-        session.add(TapLog(
+        now = now or utc_now()
+        tap = TapLog(
             card_id=card_id,
             status=result.status,
             reason=result.reason or "",
             registered=bool(result.registered),
             limit_at_tap=int(result.limit or 0),
             remaining=int(result.remaining or 0),
-            tapped_at=utc_now(),
-            local_date=local_date_for(utc_now(), get_settings().tz),
-        ))
+            tapped_at=now,
+            local_date=local_date_for(now, get_settings().tz),
+        )
+        session.add(tap)
+        session.flush()
+        from .receipt import queue_receipt
+        # Receipt preparation must never discard the audit record.
+        try:
+            with session.begin_nested():
+                queue_receipt(session, tap)
+        except Exception:
+            import logging
+            logging.getLogger(__name__).exception("Could not queue receipt")
         session.commit()
     except Exception:  # noqa: BLE001
         try:
@@ -133,15 +146,17 @@ def decide_scan(session: Session, raw_card_id: str) -> ScanResult:
     is the one thing that must never stop working, so no logging fault —
     however it arises — can turn a granted meal into a refusal at the counter.
     """
-    result = _decide(session, raw_card_id)
+    # One instant for the meal, audit log and receipt, even across midnight.
+    now = utc_now()
+    result = _decide(session, raw_card_id, now)
     try:
-        _log_tap(session, normalize_card_id(raw_card_id), result)
+        _log_tap(session, normalize_card_id(raw_card_id), result, now)
     except Exception:  # noqa: BLE001
         pass
     return result
 
 
-def _decide(session: Session, raw_card_id: str) -> ScanResult:
+def _decide(session: Session, raw_card_id: str, now: datetime | None = None) -> ScanResult:
     from .models import UNLIMITED
 
     settings = get_settings()
@@ -167,7 +182,7 @@ def _decide(session: Session, raw_card_id: str) -> ScanResult:
         return ScanResult(status=STATUS_DENIED, reason=REASON_INACTIVE,
                           limit=limit)
 
-    now = utc_now()
+    now = now or utc_now()
     today = local_date_for(now, tz)
 
     already = _count_today(session, person.id, today)
