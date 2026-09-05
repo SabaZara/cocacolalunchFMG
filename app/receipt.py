@@ -13,6 +13,7 @@ from .timeutil import to_local
 from . import receipt_config
 
 log = logging.getLogger(__name__)
+RECEIPT_HEADER = "საკვების ასაღებად, გთხოვთ ჩეკი მიაწოდოთ კონსულტანტს"
 
 
 def enabled() -> bool:
@@ -37,7 +38,7 @@ def queue_receipt(session: Session, tap: TapLog) -> None:
         typed = (person.full_name or "").strip()
         name = typed if typed != NAME_PLACEHOLDER else ""
     local = to_local(tap.tapped_at, get_settings().tz)
-    lines = ["კვების ჩეკი", f"დღის რიგითი № {sequence}",
+    lines = [RECEIPT_HEADER, "", "კვების ჩეკი", f"დღის რიგითი № {sequence}",
              f"სახელი და გვარი: {name or 'არაიდენტიფიცირებული'}",
              f"ბარათი: {tap.card_id}", f"თარიღი: {local:%d.%m.%Y}",
              f"გატარების დრო: {local:%H:%M:%S}", f"დღეს გატარება № {uses}"]

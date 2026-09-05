@@ -28,6 +28,7 @@ def test_receipt_names_repeat_denial_and_midnight(app_ctx, monkeypatch):
         session.commit()
         jobs = session.exec(select(ReceiptJob).order_by(ReceiptJob.id)).all()
         assert 'გიორგი მაისურაძე' in jobs[0].body
+        assert jobs[0].body.startswith(receipt.RECEIPT_HEADER + '\n\n')
         assert '12:30:00' in jobs[0].body
         assert 'დღის რიგითი № 1' in jobs[0].body
         assert 'დღეს ბარათი მეორედ არის გამოყენებული' in jobs[1].body

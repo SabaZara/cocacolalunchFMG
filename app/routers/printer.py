@@ -53,7 +53,7 @@ def test_print(payload: PrinterSettings) -> dict:
     if not name or name not in installed_printers():
         raise HTTPException(422, "აირჩიეთ დაყენებული პრინტერი.")
     try:
-        receipt.print_text("საცდელი ჩეკი\nსახელი და გვარი: გიორგი მაისურაძე\n"
+        receipt.print_text(receipt.RECEIPT_HEADER + "\n\nსაცდელი ჩეკი\nსახელი და გვარი: გიორგი მაისურაძე\n"
                            "დღის რიგითი № 2\nდღეს გატარება № 2\n"
                            "დღეს ბარათი მეორედ არის გამოყენებული\n"
                            "ნებადართულია\nეს არის ტესტი — კვება არ აღირიცხება",

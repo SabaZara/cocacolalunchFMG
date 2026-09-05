@@ -22,6 +22,7 @@ def test_remote_printer_setup_preserves_db_and_takes_effect_without_restart(app_
     result = client.post('/api/printer/test', headers=headers, json={'printer': 'HPRT TP80BE'})
     assert result.status_code == 200
     assert captured[0][1]['printer_name'] == 'HPRT TP80BE'
+    assert captured[0][0][0].startswith(receipt.RECEIPT_HEADER + '\n\n')
     with Session(app_ctx['db'].engine) as session:
         for model in (Scan, TapLog, ReceiptJob):
             assert session.exec(select(model)).all() == []

@@ -6,7 +6,7 @@ from sqlmodel import Session, select
 
 from app.config import get_settings
 from app.models import ReceiptJob
-from app.receipt import print_text
+from app.receipt import RECEIPT_HEADER, print_text
 from app import receipt_config
 
 
@@ -51,7 +51,7 @@ def main():
             dc.DeleteDC()
         print('Driver check passed. Run --test and inspect actual paper before enabling.')
     elif args.test:
-        print_text('საცდელი ჩეკი\nსახელი და გვარი: გიორგი მაისურაძე\n'
+        print_text(RECEIPT_HEADER + '\n\nსაცდელი ჩეკი\nსახელი და გვარი: გიორგი მაისურაძე\n'
                    'თარიღი: 05.09.2026\nგატარების დრო: 12:30:00\n'
                    'დღის რიგითი № 2\nდღეს გატარება № 2\n'
                    'დღეს ბარათი მეორედ არის გამოყენებული\n'
