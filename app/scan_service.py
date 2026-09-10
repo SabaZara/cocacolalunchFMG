@@ -59,9 +59,30 @@ class ScanResult:
     registered: bool = False        # True when this tap created the card
 
 
+# Longest plausible card id. The reader sends a 32-bit number (10 digits), and
+# the longest id ever seen in production is 10 characters; 32 leaves generous
+# headroom for a different reader without admitting garbage.
+#
+# Why this exists: a stuck reader once emitted "3377429046" followed by ~4500
+# repeated digits. It was stored as a card, and because the string had nothing
+# to wrap on, one table cell stretched to 45000px and pushed every other column
+# of the admin page off-screen — the card list looked like it had lost its
+# columns. A misread must never become a permanent row.
+MAX_CARD_ID_LEN = 32
+
+
 def normalize_card_id(raw: str) -> str:
-    """Trim surrounding whitespace but preserve everything else (leading zeros)."""
-    return (raw or "").strip()
+    """Trim surrounding whitespace but preserve everything else (leading zeros).
+
+    Returns "" for a read that cannot be a real card — nothing at all, or an
+    absurdly long string from a stuck reader. Callers already treat "" as
+    "ბარათი ვერ წაიკითხა", so a jammed reader is denied at the screen instead
+    of silently registering a junk card.
+    """
+    text = (raw or "").strip()
+    if len(text) > MAX_CARD_ID_LEN:
+        return ""
+    return text
 
 
 def _count_today(session: Session, person_id: int, day) -> int:  # noqa: ANN001

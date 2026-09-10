@@ -260,6 +260,78 @@ def delete_person(person_id: int, session: Session = Depends(get_session)) -> Re
     return Response(status_code=204)
 
 
+class PersonAdd(BaseModel):
+    """One person from the admin page, identified EITHER way."""
+    identifier: str
+    full_name: str | None = None
+
+
+@router.post("/add", status_code=201)
+def add_person(
+    payload: PersonAdd,
+    session: Session = Depends(get_session),
+) -> dict:
+    """Add one person by POS card id OR by Coca-Cola code.
+
+    The two identifiers cannot be treated the same way, because POS -> CC is
+    one-way (see cardcode): a DDD-DDDDD code names 256 possible POS ids, so it
+    can never produce the card row the kiosk matches on.
+
+      * POS id  -> a real card row, usable at the reader immediately. Any name
+                   given is stored on the card.
+      * CC code -> a roster NAME only. The card itself registers itself the
+                   first time it physically taps, and picks this name up then.
+
+    Returned `kind` tells the UI which of the two happened so it can say so.
+    """
+    from ..cardcode import is_cc_code, normalize_cc_code, pos_to_cc
+    from ..roster import upsert_entry
+
+    raw = (payload.identifier or "").strip()
+    name = (payload.full_name or "").strip()
+    if not raw:
+        raise HTTPException(status_code=422, detail="ბარათის ID ან Coca-Cola კოდი სავალდებულოა.")
+
+    # A Coca-Cola code: name-only entry, no card row.
+    if is_cc_code(raw) or (normalize_cc_code(raw) and not raw.isdigit()):
+        code = normalize_cc_code(raw)
+        if not name:
+            raise HTTPException(
+                status_code=422,
+                detail="Coca-Cola კოდით დამატებისას სახელი სავალდებულოა.",
+            )
+        created = upsert_entry(session, code, name)
+        return {
+            "kind": "roster",
+            "cc_code": code,
+            "full_name": name,
+            "created": created,
+        }
+
+    # Otherwise a POS id: a real card row.
+    card_id = normalize_card_id(raw)
+    person = Person(
+        card_id=card_id,
+        full_name=name or NAME_PLACEHOLDER,
+        active=True,
+    )
+    session.add(person)
+    try:
+        session.commit()
+    except IntegrityError:
+        session.rollback()
+        raise HTTPException(status_code=409, detail=DUPLICATE_MSG)
+    session.refresh(person)
+    return {
+        "kind": "card",
+        "id": person.id,
+        "card_id": person.card_id,
+        "cc_code": pos_to_cc(person.card_id),
+        "full_name": name,
+        "created": True,
+    }
+
+
 @router.post("/import")
 async def import_people(
     file: UploadFile,

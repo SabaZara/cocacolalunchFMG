@@ -157,6 +157,19 @@ td.ltr, th.ltr { direction: ltr; text-align: left; font-variant-numeric: tabular
 td.actions { white-space: nowrap; }
 td.mono { font-variant-numeric: tabular-nums; font-weight: 600; letter-spacing: .3px; }
 
+/* A card id is data from a hardware reader, so it can arrive malformed. One
+   stuck read (a 4500-character id with no spaces) once stretched this column
+   to 45000px and pushed every other column off-screen, which looked like the
+   card list had lost its columns. The scan path now rejects ids that long, but
+   the table must degrade gracefully regardless: break anywhere, and never let
+   one cell dictate the table's width. */
+td.ltr.mono {
+  min-width: 12ch;          /* a normal 10-digit id never looks cramped */
+  max-width: 22ch;          /* ...and a malformed one cannot exceed this */
+  overflow-wrap: anywhere;
+  word-break: break-all;
+}
+
 .badge { display: inline-flex; align-items: center; gap: 5px; padding: 3px 11px; border-radius: 999px; font-size: 12px; font-weight: 700; }
 .badge::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: currentColor; opacity: .8; }
 .badge.ok  { background: var(--ok-bg);  color: var(--ok); }
@@ -271,3 +284,21 @@ tbody tr.selected { background: #eaf2fb !important; }
   .topbar { padding: 11px 14px; gap: 10px; }
   .container { padding: 0 12px; }
 }
+
+/* --- add-people box: collapsed file uploads ---------------------------- */
+.toggle-link {
+  color: var(--primary);
+  text-decoration: none;
+  font-weight: 600;
+  cursor: pointer;
+  user-select: none;
+}
+.toggle-link:hover { text-decoration: underline; }
+.bulk-panel {
+  margin-top: 12px;
+  padding: 14px 16px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: rgba(0, 0, 0, 0.015);
+}
+.bulk-h { margin: 0 0 10px; font-size: 14px; font-weight: 700; }

@@ -22,6 +22,9 @@
     logoutBtn: document.getElementById("logoutBtn"),
     globalMsg: document.getElementById("globalMsg"),
     newCard: document.getElementById("newCard"),
+    newName: document.getElementById("newName"),
+    bulkToggle: document.getElementById("bulkToggle"),
+    bulkPanel: document.getElementById("bulkPanel"),
     addBtn: document.getElementById("addBtn"),
     captureBtn: document.getElementById("captureBtn"),
     captureHint: document.getElementById("captureHint"),
@@ -511,17 +514,54 @@
 
   // ------------------------------ add ------------------------------------- //
   function addCard() {
-    var card = els.newCard.value.trim();
-    if (!card) return;
-    api("POST", "/api/people", { card_id: card }).then(function (res) {
-      if (!res.ok) notice(els.addMsg, (res.j && res.j.detail) || "დამატება ვერ მოხერხდა.", "bad");
-      else { notice(els.addMsg, "ბარათი დაემატა: " + esc(card), "ok"); els.newCard.value = ""; load(); }
-    });
+    var who = els.newCard.value.trim();
+    if (!who) return;
+    var name = els.newName ? els.newName.value.trim() : "";
+    // One endpoint for both identifiers: it decides whether this is a POS card
+    // id (a real card row, works at the reader now) or a Coca-Cola code (a
+    // roster name that attaches when the card first taps).
+    api("POST", "/api/people/add", { identifier: who, full_name: name })
+      .then(function (res) {
+        if (!res.ok) {
+          notice(els.addMsg, (res.j && res.j.detail) || "დამატება ვერ მოხერხდა.", "bad");
+          return;
+        }
+        var j = res.j || {};
+        var msg;
+        if (j.kind === "roster") {
+          msg = "სახელი დაემატა სიაში: " + esc(j.cc_code) + " — " + esc(j.full_name) +
+                ". ბარათი მიება პირველივე დადებისას.";
+        } else {
+          msg = "ბარათი დაემატა: " + esc(j.card_id) +
+                (j.full_name ? " — " + esc(j.full_name) : "") +
+                (j.cc_code ? " (" + esc(j.cc_code) + ")" : "");
+        }
+        notice(els.addMsg, msg, "ok");
+        els.newCard.value = "";
+        if (els.newName) els.newName.value = "";
+        load();
+        loadRosterStatus();
+      });
   }
+
   els.addBtn.addEventListener("click", addCard);
   els.newCard.addEventListener("keydown", function (e) {
     if (e.key === "Enter") { e.preventDefault(); addCard(); }
   });
+  if (els.newName) {
+    els.newName.addEventListener("keydown", function (e) {
+      if (e.key === "Enter") { e.preventDefault(); addCard(); }
+    });
+  }
+
+  if (els.bulkToggle && els.bulkPanel) {
+    els.bulkToggle.addEventListener("click", function (e) {
+      e.preventDefault();
+      var hidden = els.bulkPanel.classList.toggle("hidden");
+      els.bulkToggle.textContent =
+        (hidden ? "\u25b8" : "\u25be") + " ბევრი ადამიანის დამატება ფაილიდან";
+    });
+  }
 
   els.captureBtn.addEventListener("click", function () {
     els.newCard.focus();

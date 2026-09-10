@@ -32,45 +32,55 @@
       <div class="stat accent-warn"><div class="n" id="statRemaining">–</div><div class="l">დარჩენილი</div></div>
     </div>
 
-    <!-- Add / capture a card -->
+    <!-- Add people: one visible box, files tucked away behind a toggle -->
     <div class="card">
-      <h2><span class="h2-ico">➕</span> ბარათის დამატება</h2>
+      <h2><span class="h2-ico">➕</span> ადამიანის დამატება</h2>
       <div class="row">
-        <input id="newCard" type="text" placeholder="ბარათის ID" />
+        <input id="newCard" type="text" placeholder="ბარათის ID ან Coca-Cola კოდი" />
+        <input id="newName" type="text" placeholder="სახელი და გვარი" />
         <button id="addBtn">დამატება</button>
         <button id="captureBtn" class="ghost" title="დააფოკუსეთ და დაადეთ ბარათი">ბარათის წაკითხვა</button>
         <span id="captureHint" class="hidden" style="color:var(--muted)">დაელოდეთ ბარათის დადებას…</span>
       </div>
+      <p class="hint">
+        <b>ბარათის ID</b> (გრძელი ციფრი, მაგ. 3377269862) — ბარათი მაშინვე
+        მუშაობს კიოსკზე.<br />
+        <b>Coca-Cola კოდი</b> (მაგ. 077-03174) — ემატება მხოლოდ სახელი;
+        ბარათი თავად დარეგისტრირდება პირველივე დადებისას.
+      </p>
       <div id="addMsg"></div>
-    </div>
 
-    <!-- Bulk import -->
-    <div class="card">
-      <h2><span class="h2-ico">📥</span> ჯგუფური იმპორტი (.xlsx / .csv)</h2>
-      <div class="row">
-        <input id="importFile" type="file" accept=".xlsx,.csv" />
-        <button id="importBtn">ატვირთვა</button>
-      </div>
-      <div class="hint" style="margin-top:8px">ერთ სვეტში, ერთი ბარათის ID თითო ხაზზე. წამყვანი ნულები შენარჩუნდება.</div>
-      <div id="importMsg"></div>
-    </div>
+      <p class="hint" style="margin-top:14px">
+        <a href="#" id="bulkToggle" class="toggle-link">▸ ბევრი ადამიანის დამატება ფაილიდან</a>
+      </p>
 
-    <!-- Coca-Cola personnel roster -->
-    <div class="card">
-      <h2><span class="h2-ico">🧾</span> Coca-Cola სია (სახელები)</h2>
-      <div class="row">
-        <input id="rosterFile" type="file" accept=".xls,.xlsx,.csv" />
-        <button id="rosterBtn">ატვირთვა</button>
-        <span class="spacer" style="flex:1"></span>
-        <span id="rosterState" style="color:var(--muted)"></span>
+      <div id="bulkPanel" class="hidden bulk-panel">
+        <h3 class="bulk-h">🧾 Coca-Cola სია (სახელები)</h3>
+        <div class="row">
+          <input id="rosterFile" type="file" accept=".xls,.xlsx,.csv" />
+          <button id="rosterBtn">ატვირთვა</button>
+          <span class="spacer" style="flex:1"></span>
+          <span id="rosterState" style="color:var(--muted)"></span>
+        </div>
+        <div class="hint" style="margin-top:8px">
+          Coca-Cola-ს სრული სია — სვეტები: CardNo, FirstName, LastName.<br />
+          CardNo უნდა იყოს <b>077-03174</b> ფორმატით. გრძელი ბარათის ID
+          (3377269862) აქ <b>არ</b> მუშაობს.<br />
+          ძველი სახელები არ იშლება — მხოლოდ განახლდება.
+        </div>
+        <div id="rosterMsg"></div>
+
+        <h3 class="bulk-h" style="margin-top:18px">📥 ბარათების სია (მხოლოდ ID)</h3>
+        <div class="row">
+          <input id="importFile" type="file" accept=".xlsx,.csv" />
+          <button id="importBtn">ატვირთვა</button>
+        </div>
+        <div class="hint" style="margin-top:8px">
+          მხოლოდ ბარათის ID-ები, სახელების გარეშე — ერთი სვეტი, თითო ID
+          თითო ხაზზე.
+        </div>
+        <div id="importMsg"></div>
       </div>
-      <div class="hint" style="margin-top:8px">
-        Coca-Cola-ს ფაილი (CardNo / FirstName / LastName). სახელები ავტომატურად
-        დაუკავშირდება ბარათებს — POS ID გარდაიქმნება Coca-Cola კოდად
-        (მაგ. 3377269862 → 077-03174). ხელით სახელების წერა აღარ დაგჭირდებათ.
-        განმეორებითი ატვირთვა მხოლოდ განაახლებს სიას.
-      </div>
-      <div id="rosterMsg"></div>
     </div>
 
     <!-- Card list -->

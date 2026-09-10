@@ -198,6 +198,31 @@ def import_roster(session: Session, filename: str, data: bytes) -> RosterReport:
     return report
 
 
+def upsert_entry(session: Session, cc_code: str, full_name: str) -> bool:
+    """Add/refresh ONE roster name. Returns True when a new entry was created.
+
+    The bulk import is for Coca-Cola's whole export; this is the single-person
+    path behind the admin page's add box, used when somebody is identified by
+    their DDD-DDDDD code rather than by a card that has physically tapped.
+    """
+    code = normalize_cc_code(cc_code)
+    name = (full_name or "").strip()
+    if not code or not name:
+        return False
+    entry = session.exec(
+        select(RosterEntry).where(RosterEntry.cc_code == code)
+    ).first()
+    if entry is None:
+        session.add(RosterEntry(cc_code=code, full_name=name))
+        session.commit()
+        return True
+    if entry.full_name != name:
+        entry.full_name = name
+        session.add(entry)
+        session.commit()
+    return False
+
+
 def names_by_cc_code(session: Session) -> dict[str, str]:
     """Whole roster as {cc_code: full_name} — one query for bulk reporting."""
     return {e.cc_code: e.full_name for e in session.exec(select(RosterEntry)).all()}
