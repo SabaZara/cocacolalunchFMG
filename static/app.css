@@ -96,13 +96,14 @@ a { color: var(--primary-2); }
   margin: 0 0 14px; font-size: 15px; font-weight: 700;
   display: flex; align-items: center; gap: 8px; color: var(--ink);
 }
+.card h2 { flex-wrap: wrap; }
 .card h2 .h2-ico { font-size: 16px; opacity: .85; }
 .card .hint { color: var(--muted); font-size: 12.5px; }
 
 .row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
 .row > * { flex: 0 0 auto; }
 
-input[type="text"], input[type="password"], input[type="date"], select {
+input[type="text"], input[type="password"], input[type="date"], input[type="number"], select {
   padding: 10px 12px;
   border: 1px solid var(--border-strong);
   border-radius: var(--radius-sm);
@@ -113,7 +114,7 @@ input[type="text"], input[type="password"], input[type="date"], select {
   transition: border-color .15s, box-shadow .15s;
 }
 input[type="text"]:focus, input[type="password"]:focus,
-input[type="date"]:focus, select:focus {
+input[type="date"]:focus, input[type="number"]:focus, select:focus {
   outline: none;
   border-color: var(--accent);
   box-shadow: 0 0 0 3px rgba(43,108,171,.16);
@@ -148,7 +149,7 @@ thead th {
   color: var(--muted); font-weight: 700; font-size: 12px;
   text-transform: uppercase; letter-spacing: .4px;
 }
-th, td { text-align: right; padding: 11px 14px; border-bottom: 1px solid var(--border); }
+th, td { text-align: left; padding: 11px 14px; border-bottom: 1px solid var(--border); }
 tbody tr { transition: background .12s; }
 tbody tr:nth-child(even) { background: #fafbfd; }
 tbody tr:hover { background: #f0f5fb; }
@@ -184,20 +185,10 @@ td.ltr.mono {
 }
 .limit-input:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px rgba(43,108,171,.16); }
 
-/* inline name editor. Borderless until hovered/focused so a table full of
-   empty name cells reads as a list, not a wall of input boxes. */
-.name-input {
-  width: 100%; min-width: 120px; padding: 6px 8px; font-size: 14px;
-  border: 1px solid transparent; border-radius: 7px;
-  background: transparent; color: inherit; font-family: inherit;
-}
-.name-input::placeholder { color: var(--muted); opacity: .6; }
-.name-input:hover { border-color: var(--border); background: var(--card); }
-.name-input:focus {
-  outline: none; border-color: var(--accent); background: var(--card);
-  box-shadow: 0 0 0 3px rgba(43,108,171,.16);
-}
-.name-input:disabled { opacity: .5; }
+/* All names use the same readable, wrapping text presentation. */
+.person-name { min-width: 210px; max-width: 340px; overflow-wrap: anywhere; line-height: 1.5; }
+.empty-name { color: var(--muted); font-size: 13px; }
+.meal-cell, .badge { white-space: nowrap; }
 
 /* per-card limit cell: number box + an "unlimited" toggle */
 .limit-cell { white-space: nowrap; }
@@ -249,7 +240,7 @@ tbody tr.selected { background: #eaf2fb !important; }
 .hidden { display: none !important; }
 
 /* ------------------------------- stats --------------------------------- */
-.stat-grid { display: flex; gap: 14px; flex-wrap: wrap; }
+.stat-grid, .stats { display: flex; gap: 14px; flex-wrap: wrap; }
 .stat {
   flex: 1 1 150px;
   background: linear-gradient(180deg, #ffffff, #f7f9fc);
@@ -264,8 +255,8 @@ tbody tr.selected { background: #eaf2fb !important; }
   content: ""; position: absolute; right: -10px; top: -10px;
   width: 54px; height: 54px; border-radius: 50%; opacity: .10; background: var(--accent);
 }
-.stat .n { font-size: 32px; font-weight: 800; line-height: 1.1; letter-spacing: -.5px; }
-.stat .l { color: var(--muted); font-size: 12.5px; margin-top: 4px; font-weight: 600; }
+.stat .n, .stat .stat-num { font-size: 32px; font-weight: 800; line-height: 1.1; letter-spacing: -.5px; }
+.stat .l, .stat .stat-label { color: var(--muted); font-size: 12.5px; margin-top: 4px; font-weight: 600; }
 .stat.accent-ok .n { color: var(--ok); }
 .stat.accent-primary .n { color: var(--primary-2); }
 .stat.accent-warn .n { color: var(--warn); }
@@ -314,3 +305,17 @@ dialog::backdrop { background: rgba(15, 23, 42, .45); }
 #editForm { display: grid; gap: 12px; }
 #editForm input { width: 100%; }
 #editMsg { color: var(--bad); }
+
+/* Keep controls within the page; wide tables scroll independently. */
+.topbar { flex-wrap: wrap; }
+.topbar nav { flex-wrap: wrap; }
+.row > input, .row > select, .chips > input { min-width: 0 !important; max-width: 100%; }
+#newCard { flex: 0 1 310px; width: 310px; }
+#newName { flex: 0 1 250px; width: 250px; }
+#search { flex: 0 1 340px; width: 340px; }
+.switch input:focus-visible + .track { outline: 3px solid var(--accent); outline-offset: 3px; }
+@media (max-width: 560px) {
+  .topbar nav { order: 2; width: 100%; margin-left: 0; }
+  .card { padding: 14px; }
+  .row > label { max-width: 100%; }
+}

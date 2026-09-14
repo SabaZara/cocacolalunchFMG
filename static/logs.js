@@ -51,7 +51,7 @@
         '<div class="stat-label">სულ მიდება</div></div>' +
       '<div class="stat"><div class="stat-num" style="color:var(--ok)">' + d.allowed + "</div>" +
         '<div class="stat-label">ნებადართული</div></div>' +
-      '<div class="stat"><div class="stat-num" style="color:var(--danger)">' + d.denied + "</div>" +
+      '<div class="stat"><div class="stat-num" style="color:var(--bad)">' + d.denied + "</div>" +
         '<div class="stat-label">უარყოფილი</div></div>';
 
     if (d.by_reason && d.by_reason.length) {
@@ -83,7 +83,7 @@
                              : '<span style="color:var(--muted)">—</span>';
       return "<tr>" +
         '<td class="ltr mono">' + esc(r.date) + " " + esc(r.time) + "</td>" +
-        "<td>" + name + "</td>" +
+        '<td class="person-name">' + name + "</td>" +
         '<td class="ltr mono">' + esc(r.cc_code || "") + "</td>" +
         '<td class="ltr mono">' + esc(r.card_id) + "</td>" +
         "<td>" + badge + "</td>" +

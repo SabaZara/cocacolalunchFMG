@@ -1,13 +1,9 @@
-/* Admin: card management. Works with card_id only.
- *
- * Name/department are intentionally hidden. To re-enable later, flip
- * SHOW_NAMES to true — the table head, rows, and edit form all key off it,
- * so no rewrite is needed. */
+/* Admin: card management with names edited through the edit dialog. */
 (function () {
   "use strict";
 
   // Names are ON: cards register themselves as anonymous IDs, so the operator
-  // needs a way to put a person to each one. The name cell is edited inline.
+  // needs a way to put a person to each one. Names are edited through the edit dialog.
   // Department stays hidden (unused) — flip SHOW_DEPARTMENT to bring it back.
   var SHOW_NAMES = true;
   var SHOW_CC_CODE = true;   // Coca-Cola's own card number
@@ -131,7 +127,7 @@
   function renderHead() {
     var cols = ['<th class="sel"><input type="checkbox" class="allcheck" id="allCheck" /></th>',
                 '<th class="ltr">ბარათის ID</th>'];
-    if (SHOW_NAMES) cols.push("<th>სახელი</th>");
+    if (SHOW_NAMES) cols.push("<th>სახელი და გვარი</th>");
     if (SHOW_CC_CODE) cols.push('<th class="ltr">Coca-Cola კოდი</th>');
     if (SHOW_DEPARTMENT) cols.push("<th>დეპარტამენტი</th>");
     cols.push("<th>სტატუსი</th>", "<th>დღეს ნაჭამი</th>", "<th>დღიური ლიმიტი</th>",
@@ -154,23 +150,9 @@
       '<td class="ltr mono">' + esc(p.card_id) + "</td>",
     ];
     if (SHOW_NAMES) {
-      // A name from Coca-Cola's roster is authoritative, so it is shown as
-      // plain text — editing it would only create a private spelling that the
-      // next roster import silently overrides. Cards NOT on the roster stay
-      // editable, which is the only way to label them.
       var named = p.full_name && p.full_name !== NAME_PLACEHOLDER;
-      if (p.from_roster) {
-        cells.push('<td title="Coca-Cola-ს სიიდან">' + esc(p.full_name) + "</td>");
-      } else {
-        cells.push(
-          '<td><input type="text" class="name-input" data-act="name" ' +
-            'data-id="' + p.id + '" ' +
-            'data-orig="' + esc(named ? p.full_name : "") + '" ' +
-            'value="' + esc(named ? p.full_name : "") + '" ' +
-            'placeholder="სახელი…" ' +
-            'title="დააჭირეთ და ჩაწერეთ სახელი" /></td>'
-        );
-      }
+      cells.push('<td class="person-name">' + (named ? esc(p.full_name) :
+        '<span class="empty-name">სახელი არ არის მითითებული</span>') + '</td>');
     }
     if (SHOW_CC_CODE) {
       cells.push('<td class="ltr mono">' + esc(p.cc_code || "") + "</td>");
@@ -185,11 +167,11 @@
     );
     // today's meals as a count badge N / limit + a quick mark/clear toggle
     cells.push(
-      '<td>' +
+      '<td class="meal-cell">' +
         '<span class="badge ' + (full ? "ok" : (p.ate_count > 0 ? "warn-badge" : "off")) + '">' +
-          p.ate_count + " / " + p.daily_limit + "</span> " +
+          p.ate_count + " / " + (p.daily_limit < 0 ? "∞" : p.daily_limit) + "</span> " +
         '<label class="switch" title="ჭამა: სრულად მონიშვნა / მოხსნა" style="margin-inline-start:8px">' +
-          '<input type="checkbox" data-act="ate" data-id="' + p.id + '"' + (full ? " checked" : "") + " />" +
+          '<input type="checkbox" data-act="ate" data-id="' + p.id + '"' + ((p.daily_limit < 0 ? p.ate_count > 0 : full) ? " checked" : "") + " />" +
           '<span class="track"></span></label>' +
       "</td>"
     );
@@ -297,52 +279,6 @@
     });
     renderRows();
   }
-
-  // Save a name when the operator leaves the field (blur) or presses Enter.
-  // No confirm dialog: typing a name is low-stakes and confirming every one
-  // while labelling a stack of cards would be unbearable.
-  function saveName(input) {
-    var pid = input.dataset.id;
-    var val = (input.value || "").trim();
-    var orig = input.dataset.orig || "";
-    if (val === orig) return;                 // nothing changed
-    input.disabled = true;
-    // Clearing the box restores the server's placeholder.
-    api("PUT", "/api/people/" + pid, { full_name: val || NAME_PLACEHOLDER })
-      .then(function (res) {
-        if (!res.ok) {
-          notice(els.globalMsg, (res.j && res.j.detail) || "სახელი ვერ შეინახა.", "bad");
-          input.value = orig;
-        } else {
-          input.dataset.orig = val;
-          // Keep the in-memory list in step so the next auto-refresh does not
-          // flash the old value back into the box.
-          for (var i = 0; i < shown.length; i++) {
-            if (String(shown[i].id) === String(pid)) {
-              shown[i].full_name = val || NAME_PLACEHOLDER;
-              break;
-            }
-          }
-          notice(els.globalMsg, val ? "სახელი შენახულია: " + val : "სახელი მოიხსნა.", "ok");
-        }
-        input.disabled = false;
-      }).catch(function () {
-        input.value = orig;
-        input.disabled = false;
-      });
-  }
-
-  els.tableBody.addEventListener("blur", function (e) {
-    var ni = e.target.closest && e.target.closest('input[data-act="name"]');
-    if (ni) saveName(ni);
-  }, true);   // capture: blur does not bubble
-
-  els.tableBody.addEventListener("keydown", function (e) {
-    var ni = e.target.closest && e.target.closest('input[data-act="name"]');
-    if (!ni) return;
-    if (e.key === "Enter") { e.preventDefault(); ni.blur(); }
-    else if (e.key === "Escape") { ni.value = ni.dataset.orig || ""; ni.blur(); }
-  });
 
   // Save a per-card limit when the operator leaves the field / presses Enter.
   function saveLimit(input) {
