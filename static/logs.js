@@ -77,18 +77,18 @@
     els.logCount.textContent = "ნაჩვენებია: " + list.length;
     els.logBody.innerHTML = list.map(function (r) {
       var ok = r.status === "ALLOWED";
-      var badge = '<span class="badge ' + (ok ? "ok" : "off") + '">' +
-        esc(r.status_ka) + "</span>";
+      var badge = '<span class="badge ' + (r.mistaken || !ok ? "bad" : "ok") + '">' +
+        esc(r.mistaken ? "გაუქმებული" : r.status_ka) + "</span>";
       var name = r.full_name ? esc(r.full_name)
                              : '<span style="color:var(--muted)">—</span>';
-      return "<tr>" +
-        '<td class="ltr mono">' + esc(r.date) + " " + esc(r.time) + "</td>" +
+      return '<tr' + (r.mistaken ? ' class="log-mistaken"' : "") + ">" +
+        '<td class="ltr mono log-time">' + esc(r.date) + " " + esc(r.time) + "</td>" +
         '<td class="person-name">' + name + "</td>" +
         '<td class="ltr mono">' + esc(r.cc_code || "") + "</td>" +
         '<td class="ltr mono">' + esc(r.card_id) + "</td>" +
         "<td>" + badge + "</td>" +
         '<td style="color:var(--muted)">' + esc(r.reason || "") + "</td>" +
-        '<td>' + (r.mistaken ? '<span class="badge off">შეცდომით დაფიქსირებული</span>' :
+        '<td>' + (r.mistaken ? '<button class="small ghost" data-restore="' + r.id + '">აღდგენა</button>' :
           '<button class="small ghost" data-mistaken="' + r.id + '">შეცდომით დაფიქსირდა</button>') + '</td>' +
         "</tr>";
     }).join("") ||
@@ -105,7 +105,7 @@
     }
     var url = "/api/reports/taplog?from=" + f + "&to=" + t +
       (logStatus ? "&status=" + logStatus : "");
-    api(url).then(function (d) {
+    return api(url).then(function (d) {
       renderStats(d);
       logRows = d.rows || [];
       renderRows();
@@ -136,13 +136,24 @@
   }
 
   els.logBody.addEventListener("click", function (e) {
-    var button = e.target.closest("button[data-mistaken]");
+    var button = e.target.closest("button[data-mistaken], button[data-restore]");
     if (!button) return;
-    if (!confirm("მოინიშნოს შეცდომით დაფიქსირებულად? შესაბამისი კვება აღარ ჩაითვლება, ჩანაწერი კი ლოგში დარჩება.")) return;
+    var restoring = button.hasAttribute("data-restore");
+    var promptText = restoring
+      ? "აღდგეს ჩანაწერი? ნებადართული კვება კვლავ ჩაითვლება თავდაპირველ თარიღში."
+      : "მოინიშნოს შეცდომით დაფიქსირებულად? შესაბამისი კვება აღარ ჩაითვლება, ჩანაწერი კი ლოგში დარჩება.";
+    if (!confirm(promptText)) return;
     button.disabled = true;
-    fetch("/api/reports/taplog/" + button.dataset.mistaken + "/mistaken", { method: "POST" })
-      .then(function (r) { if (!r.ok) throw new Error(); return load(); })
-      .catch(function () { els.logMsg.textContent = "შენახვა ვერ მოხერხდა. სცადეთ ხელახლა."; button.disabled = false; });
+    var id = restoring ? button.dataset.restore : button.dataset.mistaken;
+    fetch("/api/reports/taplog/" + id + (restoring ? "/restore" : "/mistaken"), { method: "POST" })
+      .then(function (r) {
+        if (r.status === 401) { window.location.href = "/login"; throw new Error("გაიარეთ ავტორიზაცია."); }
+        return r.json().then(function (data) {
+          if (!r.ok) throw new Error(data.detail || "შენახვა ვერ მოხერხდა.");
+          return load();
+        });
+      })
+      .catch(function (error) { els.logMsg.textContent = error.message || "კავშირის შეცდომა. სცადეთ ხელახლა."; button.disabled = false; });
   });
 
   // Wire up

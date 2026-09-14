@@ -136,3 +136,19 @@ class ReceiptJob(SQLModel, table=True):
     body: str
     state: str = Field(default="pending", index=True)
     error: str = Field(default="")
+
+
+class TapCorrection(SQLModel, table=True):
+    """Meal removed by a correction, retained so undo survives card-ID edits.
+
+    No person FK: deleting a person must not prevent deletion, nor let undo
+    recreate that person or attach the meal to a new owner of the old card.
+    A null person_id records that the correction removed no meal.
+    """
+    __tablename__ = "tap_corrections"
+    tap_id: int = Field(primary_key=True)
+    person_id: int | None = None
+    person_created_at: datetime | None = None
+    card_id: str
+    scanned_at: datetime
+    local_date: date

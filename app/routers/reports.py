@@ -231,15 +231,18 @@ def taplog_export(
 
 @router.post("/taplog/{tap_id}/mistaken")
 def mark_mistaken(tap_id: int, session: Session = Depends(get_session)) -> dict:
-    """Keep the original tap decision, but remove its exact granted meal once."""
+    """Remove only this tap's meal and retain enough information for undo."""
     from sqlmodel import select
-    from ..models import TapLog, Scan
+    from ..models import TapLog, Scan, TapCorrection, Person
 
+    # Serialize corrections so concurrent clicks cannot add/remove meals twice.
+    session.connection().exec_driver_sql("BEGIN IMMEDIATE")
     tap = session.get(TapLog, tap_id)
     if tap is None:
         raise HTTPException(status_code=404, detail="ჩანაწერი ვერ მოიძებნა.")
     if tap.mistaken:
         return {"ok": True}
+    meals = []
     if tap.status == "ALLOWED":
         meals = session.exec(select(Scan).where(
             Scan.card_id == tap.card_id, Scan.scanned_at == tap.tapped_at,
@@ -247,9 +250,56 @@ def mark_mistaken(tap_id: int, session: Session = Depends(get_session)) -> dict:
         )).all()
         if len(meals) > 1:
             raise HTTPException(status_code=409, detail="ზუსტი კვების ჩანაწერი ვერ განისაზღვრა.")
-        if meals:
-            session.delete(meals[0])
+    meal = meals[0] if meals else None
+    snapshot = session.get(TapCorrection, tap_id) or TapCorrection(
+        tap_id=tap_id, card_id=tap.card_id, scanned_at=tap.tapped_at,
+        local_date=tap.local_date)
+    snapshot.person_id = meal.person_id if meal else None
+    owner = session.get(Person, meal.person_id) if meal else None
+    snapshot.person_created_at = owner.created_at if owner else None
+    session.add(snapshot)
+    if meal:
+        session.delete(meal)
     tap.mistaken = True
+    session.add(tap)
+    session.commit()
+    return {"ok": True}
+
+
+@router.post("/taplog/{tap_id}/restore")
+def restore_tap(tap_id: int, session: Session = Depends(get_session)) -> dict:
+    """Undo an accidental-tap mark, restoring a meal on its original date."""
+    from sqlmodel import select
+    from ..models import TapLog, Scan, Person, TapCorrection
+
+    session.connection().exec_driver_sql("BEGIN IMMEDIATE")
+    tap = session.get(TapLog, tap_id)
+    if tap is None:
+        raise HTTPException(status_code=404, detail="ჩანაწერი ვერ მოიძებნა.")
+    if not tap.mistaken:
+        return {"ok": True}
+    snapshot = session.get(TapCorrection, tap_id)
+    if tap.status == "ALLOWED":
+        if snapshot:
+            person = session.get(Person, snapshot.person_id) if snapshot.person_id else None
+            needs_meal = snapshot.person_id is not None
+        else:
+            # Compatibility with marks made before correction snapshots existed.
+            person = session.exec(select(Person).where(Person.card_id == tap.card_id)).first()
+            needs_meal = True
+        if needs_meal:
+            if person is None or (snapshot and person.created_at != snapshot.person_created_at):
+                raise HTTPException(status_code=409, detail="ბარათის მფლობელი ვერ მოიძებნა. კვების აღდგენა ვერ მოხერხდა.")
+            existing = session.exec(select(Scan).where(
+                Scan.card_id == tap.card_id, Scan.scanned_at == tap.tapped_at,
+                Scan.local_date == tap.local_date,
+            )).all()
+            if any(meal.person_id != person.id for meal in existing) or len(existing) > 1:
+                raise HTTPException(status_code=409, detail="კვების ჩანაწერი სხვა მფლობელს უკავშირდება ან დუბლირებულია.")
+            if not existing:
+                session.add(Scan(person_id=person.id, card_id=tap.card_id,
+                                 scanned_at=tap.tapped_at, local_date=tap.local_date))
+    tap.mistaken = False
     session.add(tap)
     session.commit()
     return {"ok": True}

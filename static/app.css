@@ -319,3 +319,10 @@ dialog::backdrop { background: rgba(15, 23, 42, .45); }
   .card { padding: 14px; }
   .row > label { max-width: 100%; }
 }
+
+/* Keep accidental entries distinct without relying on color alone. */
+tr.log-mistaken, tbody tr.log-mistaken:nth-child(even) { background: var(--bad-bg); }
+tbody tr.log-mistaken:hover { background: #f9dada; }
+tr.log-mistaken td:first-child { box-shadow: inset 4px 0 var(--bad); }
+
+.log-time { white-space: nowrap; }
