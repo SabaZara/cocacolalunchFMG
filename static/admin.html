@@ -7,7 +7,7 @@
   <script src="/static/ngrok-skip.js"></script>
   <link rel="stylesheet" href="/static/app.css" />
 </head>
-<body>
+<body class="wide-page">
   <header class="topbar">
     <h1>სასადილო</h1>
     <nav>
@@ -213,6 +213,20 @@
     </div>
   </div>
 
+  <dialog id="editDialog" aria-labelledby="editTitle">
+    <form id="editForm">
+      <h2 id="editTitle">ბარათის რედაქტირება</h2>
+      <label for="editFirstName">სახელი</label>
+      <input id="editFirstName" type="text" autocomplete="given-name" />
+      <label for="editLastName">გვარი</label>
+      <input id="editLastName" type="text" autocomplete="family-name" />
+      <label for="editCardId">ბარათის ID</label>
+      <input id="editCardId" type="text" inputmode="numeric" required />
+      <div id="editMsg" role="alert"></div>
+      <div class="row"><button type="submit" id="editSave">შენახვა</button>
+        <button type="button" class="ghost" id="editCancel">გაუქმება</button></div>
+    </form>
+  </dialog>
   <script src="/static/admin.js"></script>
   <script src="/static/printer.js"></script>
 </body>

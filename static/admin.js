@@ -212,7 +212,7 @@
       '<td class="actions">' +
         '<button class="small ghost" data-act="toggle" data-id="' + p.id + '" data-active="' + (p.active ? "1" : "0") + '">' +
           (p.active ? "გათიშვა" : "ჩართვა") + "</button> " +
-        '<button class="small ghost" data-act="edit" data-id="' + p.id + '" data-card="' + esc(p.card_id) + '">რედაქტ.</button> ' +
+        '<button class="small ghost" data-act="edit" data-id="' + p.id + '" data-card="' + esc(p.card_id) + '">რედაქტირება</button> ' +
         '<button class="small danger" data-act="delete" data-id="' + p.id + '" data-card="' + esc(p.card_id) + '">წაშლა</button>' +
       "</td>"
     );
@@ -258,7 +258,7 @@
 
   function busyEditing() {
     // A checked row / open bulk bar means a multi-step action is in progress.
-    if (selectedIds().length > 0) return true;
+    if (editDialog.open || selectedIds().length > 0) return true;
     var a = document.activeElement;
     if (!a) return false;
     // Typing in any field (search, limit, add-card, backup config...).
@@ -408,6 +408,27 @@
     }
   });
 
+  var editDialog = document.getElementById("editDialog");
+  var editingId = null;
+  document.getElementById("editCancel").addEventListener("click", function () { editDialog.close(); });
+  document.getElementById("editForm").addEventListener("submit", function (e) {
+    e.preventDefault();
+    var save = document.getElementById("editSave");
+    var message = document.getElementById("editMsg");
+    save.disabled = true;
+    api("PUT", "/api/people/" + editingId, {
+      card_id: document.getElementById("editCardId").value.trim(),
+      full_name: [document.getElementById("editFirstName").value.trim(),
+                  document.getElementById("editLastName").value.trim()].filter(Boolean).join(" ")
+    }).then(function (res) {
+      if (!res.ok) { message.textContent = (res.j && res.j.detail) || "შენახვა ვერ მოხერხდა."; return; }
+      editDialog.close();
+      notice(els.globalMsg, "ბარათი განახლდა.", "ok");
+      load();
+    }).catch(function () { message.textContent = "კავშირის შეცდომა. სცადეთ ხელახლა."; })
+      .finally(function () { save.disabled = false; });
+  });
+
   // --------------------------- row actions -------------------------------- //
   els.tableBody.addEventListener("click", function (e) {
     var btn = e.target.closest("button[data-act]");
@@ -445,16 +466,15 @@
       if (!confirm('დარწმუნებული ხართ, რომ გსურთ ბარათის წაშლა? "' + card + '" — ისტორიაც წაიშლება.')) return;
       api("DELETE", "/api/people/" + id).then(function () { load(); });
     } else if (act === "edit") {
-      var nv = prompt("ბარათის ახალი ID:", card);
-      if (nv === null) return;
-      nv = nv.trim(); if (!nv) return;
-      if (nv === card) return;
-      if (!confirm('დარწმუნებული ხართ, რომ გსურთ ბარათის შეცვლა: "' + card + '" → "' + nv + '"?')) return;
-      api("PUT", "/api/people/" + id, { card_id: nv }).then(function (res) {
-        if (!res.ok) notice(els.globalMsg, (res.j && res.j.detail) || "შეცდომა", "bad");
-        else notice(els.globalMsg, "ბარათი განახლდა.", "ok");
-        load();
-      });
+      var person = shown.find(function (p) { return String(p.id) === id; });
+      if (!person) return;
+      editingId = id;
+      var parts = (person.full_name || "").trim().split(/\s+/);
+      document.getElementById("editFirstName").value = parts.shift() || "";
+      document.getElementById("editLastName").value = parts.join(" ");
+      document.getElementById("editCardId").value = person.card_id;
+      document.getElementById("editMsg").textContent = "";
+      editDialog.showModal();
     }
   });
 

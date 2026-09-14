@@ -227,3 +227,29 @@ def taplog_export(
         media_type=media,
         headers={"Content-Disposition": f'attachment; filename="{fname}"'},
     )
+
+
+@router.post("/taplog/{tap_id}/mistaken")
+def mark_mistaken(tap_id: int, session: Session = Depends(get_session)) -> dict:
+    """Keep the original tap decision, but remove its exact granted meal once."""
+    from sqlmodel import select
+    from ..models import TapLog, Scan
+
+    tap = session.get(TapLog, tap_id)
+    if tap is None:
+        raise HTTPException(status_code=404, detail="ჩანაწერი ვერ მოიძებნა.")
+    if tap.mistaken:
+        return {"ok": True}
+    if tap.status == "ALLOWED":
+        meals = session.exec(select(Scan).where(
+            Scan.card_id == tap.card_id, Scan.scanned_at == tap.tapped_at,
+            Scan.local_date == tap.local_date,
+        )).all()
+        if len(meals) > 1:
+            raise HTTPException(status_code=409, detail="ზუსტი კვების ჩანაწერი ვერ განისაზღვრა.")
+        if meals:
+            session.delete(meals[0])
+    tap.mistaken = True
+    session.add(tap)
+    session.commit()
+    return {"ok": True}

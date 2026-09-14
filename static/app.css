@@ -302,3 +302,15 @@ tbody tr.selected { background: #eaf2fb !important; }
   background: rgba(0, 0, 0, 0.015);
 }
 .bulk-h { margin: 0 0 10px; font-size: 14px; font-weight: 700; }
+
+/* Use available desktop width and keep long lists within a scrollable region. */
+.wide-page .container { max-width: none; width: 100%; padding-inline: clamp(12px, 2.5vw, 48px); }
+.wide-page .table-wrap { max-height: 65vh; overflow: auto; scrollbar-gutter: stable; }
+.wide-page .table-wrap table { min-width: 1100px; }
+.wide-page thead th { position: sticky; top: 0; z-index: 1; }
+.wide-page td.ltr.mono { min-width: 14ch; }
+dialog { width: min(460px, calc(100vw - 32px)); border: 1px solid var(--border); border-radius: 14px; padding: 24px; color: var(--ink); }
+dialog::backdrop { background: rgba(15, 23, 42, .45); }
+#editForm { display: grid; gap: 12px; }
+#editForm input { width: 100%; }
+#editMsg { color: var(--bad); }

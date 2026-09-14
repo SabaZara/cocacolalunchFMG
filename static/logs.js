@@ -88,9 +88,11 @@
         '<td class="ltr mono">' + esc(r.card_id) + "</td>" +
         "<td>" + badge + "</td>" +
         '<td style="color:var(--muted)">' + esc(r.reason || "") + "</td>" +
+        '<td>' + (r.mistaken ? '<span class="badge off">შეცდომით დაფიქსირებული</span>' :
+          '<button class="small ghost" data-mistaken="' + r.id + '">შეცდომით დაფიქსირდა</button>') + '</td>' +
         "</tr>";
     }).join("") ||
-      '<tr><td colspan="6" style="text-align:center;color:var(--muted);padding:22px">ჩანაწერი არ არის</td></tr>';
+      '<tr><td colspan="7" style="text-align:center;color:var(--muted);padding:22px">ჩანაწერი არ არის</td></tr>';
   }
 
   function load() {
@@ -132,6 +134,16 @@
     els.logTo.value = iso(to);
     load();
   }
+
+  els.logBody.addEventListener("click", function (e) {
+    var button = e.target.closest("button[data-mistaken]");
+    if (!button) return;
+    if (!confirm("მოინიშნოს შეცდომით დაფიქსირებულად? შესაბამისი კვება აღარ ჩაითვლება, ჩანაწერი კი ლოგში დარჩება.")) return;
+    button.disabled = true;
+    fetch("/api/reports/taplog/" + button.dataset.mistaken + "/mistaken", { method: "POST" })
+      .then(function (r) { if (!r.ok) throw new Error(); return load(); })
+      .catch(function () { els.logMsg.textContent = "შენახვა ვერ მოხერხდა. სცადეთ ხელახლა."; button.disabled = false; });
+  });
 
   // Wire up
   els.logBtn.addEventListener("click", load);

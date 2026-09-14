@@ -52,6 +52,11 @@ def _migrate(conn) -> None:  # noqa: ANN001
             f"DEFAULT {int(DEFAULT_DAILY_LIMIT)}"
         )
 
+    for table, column in (("people", "name_override"), ("tap_log", "mistaken")):
+        columns = [r[1] for r in conn.exec_driver_sql(f"PRAGMA table_info({table})")]
+        if columns and column not in columns:
+            conn.exec_driver_sql(f"ALTER TABLE {table} ADD COLUMN {column} BOOLEAN NOT NULL DEFAULT 0")
+
     # 2) drop legacy unique constraint on scans, if it exists
     idx_rows = conn.exec_driver_sql("PRAGMA index_list(scans)").fetchall()
     has_legacy_unique = False

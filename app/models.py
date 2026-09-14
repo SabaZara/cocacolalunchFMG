@@ -42,6 +42,7 @@ class Person(SQLModel, table=True):
     # Kept in the schema so names can be added later with NO migration.
     # Hidden in the UI for now; defaults to the placeholder.
     full_name: str = Field(default=NAME_PLACEHOLDER)
+    name_override: bool = Field(default=False)
     department: str | None = Field(default=None)
     # Set False by an admin to block a lost/stolen card. A deactivated card is
     # denied at the kiosk and is NOT re-created by auto-registration.
@@ -87,6 +88,7 @@ class TapLog(SQLModel, table=True):
     status: str = Field(index=True, nullable=False)
     # Georgian reason shown on the red screen; empty when allowed.
     reason: str = Field(default="")
+    mistaken: bool = Field(default=False)
     # True when this tap registered a brand-new card.
     registered: bool = Field(default=False)
     # The limit in force at that moment, and how many meals remained after.

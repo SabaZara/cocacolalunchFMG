@@ -151,7 +151,14 @@ def test_reports_show_roster_name_over_typed_name(app_ctx):
 
     c.post("/api/scan", json={"card_id": "4153314197"})
     pid = c.get("/api/people?q=4153314197", headers=H).json()[0]["id"]
-    c.put(f"/api/people/{pid}", headers=H, json={"full_name": "ურა ლაბაშვილი"})
+    # Legacy/imported names remain roster fallbacks; explicit admin edits now override.
+    from sqlmodel import Session
+    from app.models import Person
+    with Session(ctx["db"].engine) as session:
+        person = session.get(Person, pid)
+        person.full_name = "ურა ლაბაშვილი"
+        session.add(person)
+        session.commit()
 
     data = _roster_xlsx([("142-35733", "უშანგი", "ლაზაშვილი")])
     c.post("/api/people/roster-import", headers=H,

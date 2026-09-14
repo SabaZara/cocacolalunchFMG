@@ -7,7 +7,7 @@
   <script src="/static/ngrok-skip.js"></script>
   <link rel="stylesheet" href="/static/app.css" />
 </head>
-<body>
+<body class="wide-page">
   <header class="topbar">
     <h1>სასადილო</h1>
     <nav>
@@ -41,7 +41,8 @@
 
       <div class="hint" style="margin-bottom:12px">
         ყველა ბარათის მიდება — მათ შორის უარყოფილი. აქ ჩანს ვინ სცადა,
-        როდის და რა ეწერა ეკრანზე.
+        როდის და რა ეწერა ეკრანზე. შეცდომით დაფიქსირებული მიდება რჩება ლოგში,
+        ხოლო შესაბამისი კვება აღარ ითვლება. სტატისტიკა აჩვენებს თავდაპირველ გადაწყვეტილებებს.
       </div>
 
       <!-- counters -->
@@ -67,6 +68,7 @@
               <th class="ltr">ბარათის ID</th>
               <th>სტატუსი</th>
               <th>მიზეზი</th>
+              <th>მოქმედება</th>
             </tr>
           </thead>
           <tbody id="logBody"></tbody>

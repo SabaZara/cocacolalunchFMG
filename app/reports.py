@@ -179,14 +179,17 @@ def _identify(session: Session):
 
     roster = names_by_cc_code(session)
     typed: dict[str, str] = {}
+    overrides: dict[str, str] = {}
     for p in session.exec(select(Person)).all():
         name = (p.full_name or "").strip()
+        if p.name_override:
+            overrides[p.card_id] = name if name != NAME_PLACEHOLDER else ""
         if name and name != NAME_PLACEHOLDER:
             typed[p.card_id] = name
 
     def resolve(card_id: str) -> tuple[str, str]:
         cc = pos_to_cc(card_id)
-        return roster.get(cc) or typed.get(card_id, ""), cc
+        return overrides.get(card_id, roster.get(cc) or typed.get(card_id, "")), cc
 
     return resolve
 
@@ -251,6 +254,8 @@ def tap_log(session: Session, frm: date, to: date,
             continue
         name, cc = resolve(e.card_id)
         rows.append({
+            "id": e.id,
+            "mistaken": e.mistaken,
             "date": e.local_date.isoformat(),
             "time": _real_local(e.tapped_at).strftime("%H:%M:%S"),
             "full_name": name,
@@ -258,7 +263,7 @@ def tap_log(session: Session, frm: date, to: date,
             "card_id": e.card_id,
             "status": e.status,
             "status_ka": L_STATUS_ALLOWED if e.status == "ALLOWED" else L_STATUS_DENIED,
-            "reason": e.reason or "",
+            "reason": "შეცდომით დაფიქსირებული" if e.mistaken else (e.reason or ""),
             "registered": e.registered,
         })
 

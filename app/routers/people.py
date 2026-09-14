@@ -113,9 +113,9 @@ def _to_out(p: Person, ate_count: int, roster: dict[str, str] | None = None) -> 
         ate_count=ate_count,
         daily_limit=int(p.daily_limit),     # this card's own limit
         # Coca-Cola's spelling wins; hand-typed is the fallback.
-        full_name=roster_name or typed,
+        full_name=typed if p.name_override else (roster_name or typed),
         cc_code=cc,
-        from_roster=bool(roster_name),
+        from_roster=bool(roster_name) and not p.name_override,
         department=p.department,
     )
 
@@ -179,7 +179,8 @@ def update_person(
     if payload.active is not None:
         person.active = payload.active
     if payload.full_name is not None:
-        person.full_name = payload.full_name
+        person.full_name = payload.full_name.strip() or NAME_PLACEHOLDER
+        person.name_override = True
     if payload.department is not None:
         person.department = payload.department
     if payload.daily_limit is not None:

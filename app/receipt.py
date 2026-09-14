@@ -34,7 +34,7 @@ def queue_receipt(session: Session, tap: TapLog) -> None:
         *day_filter, TapLog.card_id == tap.card_id)).one()
     person = session.exec(select(Person).where(Person.card_id == tap.card_id)).first()
     name = lookup_name(session, pos_to_cc(tap.card_id))
-    if not name and person:
+    if person and (person.name_override or not name):
         typed = (person.full_name or "").strip()
         name = typed if typed != NAME_PLACEHOLDER else ""
     local = to_local(tap.tapped_at, get_settings().tz)
